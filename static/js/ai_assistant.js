@@ -15,6 +15,7 @@ const aiErrorMessage = document.getElementById('aiErrorMessage');
 const aiNewSessionButton = document.getElementById('aiNewSessionBtn');
 const currentTitle = document.getElementById('currentSessionTitle');
 const aiVoiceBtn = document.getElementById('aiVoiceBtn');
+const aiStudentsOpenButton = document.getElementById('openAssistantOnStudents');
 
 // ========== 初始化 ==========
 document.addEventListener('DOMContentLoaded', function() {
@@ -27,6 +28,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ========== 事件绑定 ==========
 function bindEvents() {
     aiOpenButton?.addEventListener('click', openSidebar);
+    aiStudentsOpenButton?.addEventListener('click', openSidebar);
     aiCloseButton?.addEventListener('click', closeSidebar);
     aiOverlay?.addEventListener('click', closeSidebar);
     aiNewSessionButton?.addEventListener('click', createNewSession);
