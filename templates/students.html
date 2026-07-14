@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}学生管理 - 学生信息管理系统{% endblock %}
+
+{% block content %}
+<section class="page-card">
+    <div class="page-header">
+        <div>
+            <span class="section-tag">学生信息管理</span>
+            <h2>学生管理页面</h2>
+            <p>支持搜索、添加、编辑和删除学生基础信息。</p>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <input
+            type="text"
+            id="searchInput"
+            class="search-input"
+            placeholder="输入学号、姓名、专业、年级、电话或邮箱"
+        >
+        <button type="button" class="btn btn-secondary" id="searchButton">搜索</button>
+        <button type="button" class="btn btn-secondary" id="resetButton">重置</button>
+        <button type="button" class="btn btn-primary" id="addStudentButton">新增学生</button>
+    </div>
+
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>学号</th>
+                    <th>姓名</th>
+                    <th>性别</th>
+                    <th>年龄</th>
+                    <th>专业</th>
+                    <th>年级</th>
+                    <th>电话</th>
+                    <th>邮箱</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="studentsTableBody">
+                <tr>
+                    <td colspan="10" class="empty-cell">正在加载学生数据...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<div class="modal" id="studentModal">
+    <div class="modal-content">
+        <button type="button" class="icon-button modal-close" id="closeModalButton" aria-label="关闭">&times;</button>
+        <h3 id="modalTitle">新增学生</h3>
+        <form id="studentForm">
+            <input type="hidden" id="studentId">
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="studentNumber">学号</label>
+                    <input type="text" id="studentNumber" required>
+                </div>
+                <div class="form-group">
+                    <label for="studentName">姓名</label>
+                    <input type="text" id="studentName" required>
+                </div>
+                <div class="form-group">
+                    <label for="studentGender">性别</label>
+                    <select id="studentGender" required>
+                        <option value="">请选择</option>
+                        <option value="男">男</option>
+                        <option value="女">女</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="studentAge">年龄</label>
+                    <input type="number" id="studentAge" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="studentMajor">专业</label>
+                    <input type="text" id="studentMajor" required>
+                </div>
+                <div class="form-group">
+                    <label for="studentGrade">年级</label>
+                    <input type="text" id="studentGrade" required>
+                </div>
+                <div class="form-group">
+                    <label for="studentPhone">电话</label>
+                    <input type="text" id="studentPhone">
+                </div>
+                <div class="form-group">
+                    <label for="studentEmail">邮箱</label>
+                    <input type="email" id="studentEmail">
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" id="cancelModalButton">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/students.js') }}"></script>
+{% endblock %}

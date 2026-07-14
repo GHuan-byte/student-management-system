@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - 学生信息管理系统{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+    <div class="hero-copy">
+        <span class="section-tag">基础版本</span>
+        <h2>学生信息管理系统</h2>
+        <p>
+            这是一个基于 Flask 的学生信息管理基础项目，包含首页、学生管理页，以及全局右侧滑出式 AI 助手。
+            页面风格延续旧项目的深色科技感，并简化为更适合学生数据管理的结构。
+        </p>
+        <div class="hero-actions">
+            <a href="{{ url_for('students_page') }}" class="btn btn-primary">进入学生管理</a>
+            <button type="button" class="btn btn-secondary" id="openAssistantFromHome">打开 AI 助手</button>
+        </div>
+    </div>
+    <div class="hero-panel">
+        <div class="hero-panel-card">
+            <h3>功能概览</h3>
+            <ul>
+                <li>学生信息增删改查</li>
+                <li>关键词快速搜索</li>
+                <li>统一弹窗表单编辑</li>
+                <li>右侧滑出式 AI 助手</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="stats-grid">
+    <article class="stat-card">
+        <span>学生总数</span>
+        <strong>{{ stats.total_students }}</strong>
+        <p>当前数据库中的学生记录数量</p>
+    </article>
+    <article class="stat-card">
+        <span>专业数量</span>
+        <strong>{{ stats.major_count }}</strong>
+        <p>用于首页展示的数据统计占位</p>
+    </article>
+    <article class="stat-card">
+        <span>年级数量</span>
+        <strong>{{ stats.grade_count }}</strong>
+        <p>后续可继续扩展更复杂的统计图表</p>
+    </article>
+    <article class="stat-card">
+        <span>最近录入</span>
+        <strong>{{ stats.latest_student_name }}</strong>
+        <p>展示最近一条学生记录的姓名</p>
+    </article>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('openAssistantFromHome')?.addEventListener('click', function () {
+    window.dispatchEvent(new CustomEvent('open-ai-assistant'));
+});
+</script>
+{% endblock %}

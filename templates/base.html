@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}学生信息管理系统{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="bg-particles">
+        <div class="bg-particle"></div>
+        <div class="bg-particle"></div>
+        <div class="bg-particle"></div>
+        <div class="bg-particle"></div>
+        <div class="bg-particle"></div>
+        <div class="bg-particle"></div>
+        <div class="bg-particle"></div>
+        <div class="bg-particle"></div>
+    </div>
+
+    <header class="navbar">
+        <div class="container navbar-inner">
+            <div class="brand">
+                <span class="brand-mark">S</span>
+                <div>
+                    <h1>学生信息管理系统</h1>
+                    <p>Student Management System</p>
+                </div>
+            </div>
+            <nav class="nav-links">
+                <a href="{{ url_for('index_page') }}">首页</a>
+                <a href="{{ url_for('students_page') }}">学生管理</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container page-shell">
+        {% block content %}{% endblock %}
+    </main>
+
+    <button
+        type="button"
+        class="ai-floating-button"
+        id="aiFloatingButton"
+        aria-label="打开 AI 助手"
+    >
+        AI
+    </button>
+
+    <div class="ai-overlay" id="aiOverlay"></div>
+    <aside class="ai-sidebar" id="aiSidebar" aria-hidden="true">
+        <div class="ai-sidebar-header">
+            <div>
+                <h2>AI 学生管理助手</h2>
+                <p><span class="status-dot"></span>可用状态</p>
+            </div>
+            <div class="ai-sidebar-actions">
+                <button type="button" class="btn btn-secondary btn-small" id="aiNewSessionBtn">新建会话</button>
+                <button type="button" class="icon-button" id="aiCloseButton" aria-label="关闭 AI 助手">&times;</button>
+            </div>
+        </div>
+
+        <div class="ai-error" id="aiErrorMessage"></div>
+
+        <div class="ai-message-list" id="aiMessageList">
+            <div class="ai-message ai-message-assistant">
+                <div class="ai-message-bubble">
+                    欢迎使用 AI 学生管理助手。你可以询问学生信息录入建议、查询思路，或让它协助整理管理流程。
+                </div>
+            </div>
+        </div>
+
+        <form class="ai-input-area" id="aiAssistantForm">
+            <textarea
+                id="aiAssistantInput"
+                placeholder="输入你的问题，Enter 发送，Shift + Enter 换行"
+                rows="3"
+                maxlength="1000"
+            ></textarea>
+            <div class="ai-input-footer">
+                <span class="ai-loading" id="aiLoadingIndicator">AI 正在思考...</span>
+                <button type="submit" class="btn btn-primary" id="aiSendButton">发送</button>
+            </div>
+        </form>
+    </aside>
+
+    <footer class="footer">
+        <p>Student Management System with AI Assistant</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/ai_assistant.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
