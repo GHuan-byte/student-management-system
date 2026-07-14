@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from contextlib import closing
+from datetime import datetime
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +44,11 @@ def init_db():
             )
             """
         )
+        # 兼容旧表: 新增 updated_at 列（如已存在则跳过）
+        try:
+            connection.execute("ALTER TABLE students ADD COLUMN updated_at TEXT")
+        except sqlite3.OperationalError:
+            pass
         connection.commit()
 
 
@@ -83,7 +89,7 @@ def normalize_student_payload(payload):
 def list_students():
     with closing(get_connection()) as connection:
         rows = connection.execute(
-            "SELECT id, student_number, name, gender, age, major, grade, phone, email FROM students ORDER BY id DESC"
+            "SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at FROM students ORDER BY id DESC"
         ).fetchall()
     return [row_to_dict(row) for row in rows]
 
@@ -93,7 +99,7 @@ def search_students(keyword):
     with closing(get_connection()) as connection:
         rows = connection.execute(
             """
-            SELECT id, student_number, name, gender, age, major, grade, phone, email
+            SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at
             FROM students
             WHERE student_number LIKE ?
                OR name LIKE ?
@@ -112,7 +118,7 @@ def search_students(keyword):
 def get_student_by_id(student_id):
     with closing(get_connection()) as connection:
         row = connection.execute(
-            "SELECT id, student_number, name, gender, age, major, grade, phone, email FROM students WHERE id = ?",
+            "SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at FROM students WHERE id = ?",
             (student_id,),
         ).fetchone()
     return row_to_dict(row)
@@ -120,11 +126,12 @@ def get_student_by_id(student_id):
 
 def add_student(payload):
     data = normalize_student_payload(payload)
+    data["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with closing(get_connection()) as connection:
         cursor = connection.execute(
             """
-            INSERT INTO students (student_number, name, gender, age, major, grade, phone, email)
-            VALUES (:student_number, :name, :gender, :age, :major, :grade, :phone, :email)
+            INSERT INTO students (student_number, name, gender, age, major, grade, phone, email, updated_at)
+            VALUES (:student_number, :name, :gender, :age, :major, :grade, :phone, :email, :updated_at)
             """,
             data,
         )
@@ -139,6 +146,7 @@ def update_student(student_id, payload):
 
     data = normalize_student_payload(payload)
     data["id"] = student_id
+    data["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with closing(get_connection()) as connection:
         connection.execute(
             """
@@ -150,7 +158,8 @@ def update_student(student_id, payload):
                 major = :major,
                 grade = :grade,
                 phone = :phone,
-                email = :email
+                email = :email,
+                updated_at = :updated_at
             WHERE id = :id
             """,
             data,
@@ -172,11 +181,12 @@ def get_student_stats():
         majors = connection.execute("SELECT COUNT(DISTINCT major) FROM students").fetchone()[0]
         grades = connection.execute("SELECT COUNT(DISTINCT grade) FROM students").fetchone()[0]
         latest = connection.execute(
-            "SELECT name FROM students ORDER BY id DESC LIMIT 1"
+            "SELECT name, updated_at FROM students ORDER BY id DESC LIMIT 1"
         ).fetchone()
     return {
         "total_students": total,
         "major_count": majors,
         "grade_count": grades,
         "latest_student_name": latest["name"] if latest else "暂无数据",
+        "latest_student_time": latest["updated_at"] if latest and latest["updated_at"] else "暂无记录",
     }

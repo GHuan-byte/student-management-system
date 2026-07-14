@@ -8,17 +8,6 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <div class="bg-particles">
-        <div class="bg-particle"></div>
-        <div class="bg-particle"></div>
-        <div class="bg-particle"></div>
-        <div class="bg-particle"></div>
-        <div class="bg-particle"></div>
-        <div class="bg-particle"></div>
-        <div class="bg-particle"></div>
-        <div class="bg-particle"></div>
-    </div>
-
     <header class="navbar">
         <div class="container navbar-inner">
             <div class="brand">
@@ -52,8 +41,8 @@
     <aside class="ai-sidebar" id="aiSidebar" aria-hidden="true">
         <div class="ai-sidebar-header">
             <div>
-                <h2>AI 学生管理助手</h2>
-                <p><span class="status-dot"></span>可用状态</p>
+                <h2 id="currentSessionTitle">AI 学生管理助手</h2>
+                <p><span class="status-dot"></span>在线可用</p>
             </div>
             <div class="ai-sidebar-actions">
                 <button type="button" class="btn btn-secondary btn-small" id="aiNewSessionBtn">新建会话</button>
@@ -66,7 +55,7 @@
         <div class="ai-message-list" id="aiMessageList">
             <div class="ai-message ai-message-assistant">
                 <div class="ai-message-bubble">
-                    欢迎使用 AI 学生管理助手。你可以询问学生信息录入建议、查询思路，或让它协助整理管理流程。
+                    欢迎使用 AI 学生管理助手。你可以询问学生资料录入建议、查询思路，或让它协助整理管理流程。
                 </div>
             </div>
         </div>
@@ -76,9 +65,12 @@
                 id="aiAssistantInput"
                 placeholder="输入你的问题，Enter 发送，Shift + Enter 换行"
                 rows="3"
-                maxlength="1000"
+                maxlength="500"
             ></textarea>
             <div class="ai-input-footer">
+                <div class="ai-input-tools">
+                    <button type="button" class="ai-tool-btn" id="aiVoiceBtn" title="语音输入">🎤</button>
+                </div>
                 <span class="ai-loading" id="aiLoadingIndicator">AI 正在思考...</span>
                 <button type="submit" class="btn btn-primary" id="aiSendButton">发送</button>
             </div>
