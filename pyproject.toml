@@ -1,0 +1,13 @@
+[project]
+name = "student-management-system"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.0.0",
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.28.1",
+    "openpyxl>=3.1.0",
+    "pandas>=2.2.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+]

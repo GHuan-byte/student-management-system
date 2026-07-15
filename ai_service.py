@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 
 import requests
+from requests import RequestException
 
 try:
     from dotenv import load_dotenv
@@ -111,6 +112,11 @@ def build_chat_url(api_url):
     return f"{api_url}/v1/chat/completions"
 
 
+def should_bypass_proxy():
+    value = os.environ.get("OPENAI_BYPASS_PROXY", "true").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def generate_ai_reply(message, session_id):
     api_url = os.environ.get("OPENAI_API_BASE", "").strip()
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -135,16 +141,23 @@ def generate_ai_reply(message, session_id):
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    response = requests.post(
-        build_chat_url(api_url),
-        json={"model": model, "messages": messages, "stream": False},
-        headers=headers,
-        timeout=90,
-        proxies={"http": "", "https": ""},
-    )
-    response.raise_for_status()
-    data = response.json()
-    return data["choices"][0]["message"]["content"]
+    try:
+        request_kwargs = {
+            "json": {"model": model, "messages": messages, "stream": False},
+            "headers": headers,
+            "timeout": 90,
+        }
+        if should_bypass_proxy():
+            request_kwargs["proxies"] = {"http": "", "https": ""}
+
+        response = requests.post(build_chat_url(api_url), **request_kwargs)
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
+    except RequestException as exc:
+        raise ValueError(f"AI 服务连接失败：{exc}") from exc
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise ValueError("AI 服务返回了无法识别的数据格式") from exc
 
 
 def send_chat_message(message, session_id=None):

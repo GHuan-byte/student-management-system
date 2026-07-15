@@ -171,6 +171,16 @@ body::before {
     flex-wrap: wrap;
 }
 
+.batch-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    flex-wrap: wrap;
+}
+
 .search-input,
 .form-group input,
 .form-group select,
@@ -228,6 +238,22 @@ body::before {
     border-color: var(--primary-dark);
 }
 
+.btn-danger {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+}
+
+.btn-danger:hover {
+    background: #bf4340;
+    border-color: #bf4340;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .btn-secondary {
     background: #fff;
     border-color: var(--border);
@@ -264,6 +290,17 @@ body::before {
     width: 100%;
     min-width: 960px;
     border-collapse: collapse;
+}
+
+.checkbox-column {
+    width: 42px;
+    text-align: center !important;
+}
+
+.checkbox-column input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
 }
 
 .data-table th,

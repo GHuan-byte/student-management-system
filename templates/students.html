@@ -8,7 +8,7 @@
         <div>
             <span class="section-tag">学生信息管理</span>
             <h2>学生管理页面</h2>
-            <p>支持搜索、添加、编辑和删除学生基础信息。</p>
+            <p>支持学生数据搜索、新增、编辑、导入、导出以及批量删除。</p>
         </div>
     </div>
 
@@ -21,13 +21,26 @@
         >
         <button type="button" class="btn btn-secondary" id="searchButton">搜索</button>
         <button type="button" class="btn btn-secondary" id="resetButton">重置</button>
+        <button type="button" class="btn btn-secondary" id="importCsvButton">导入 CSV/Excel</button>
+        <button type="button" class="btn btn-secondary" id="exportCsvButton">导出 CSV</button>
+        <button type="button" class="btn btn-secondary" id="exportExcelButton">导出 Excel</button>
+        <button type="button" class="btn btn-danger" id="batchDeleteButton" disabled>批量删除</button>
         <button type="button" class="btn btn-primary" id="addStudentButton">新增学生</button>
+        <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" hidden>
+    </div>
+
+    <div class="batch-actions">
+        <span id="selectedCount">已选择 0 项</span>
+        <span>导入支持字段：学号、姓名、性别、年龄、专业、成绩、电话、邮箱</span>
     </div>
 
     <div class="table-wrap">
         <table class="data-table">
             <thead>
                 <tr>
+                    <th class="checkbox-column">
+                        <input type="checkbox" id="selectAllStudents" aria-label="全选学生">
+                    </th>
                     <th>ID</th>
                     <th>学号</th>
                     <th>姓名</th>
@@ -42,7 +55,7 @@
             </thead>
             <tbody id="studentsTableBody">
                 <tr>
-                    <td colspan="10" class="empty-cell">正在加载学生数据...</td>
+                    <td colspan="11" class="empty-cell">正在加载学生数据...</td>
                 </tr>
             </tbody>
         </table>
@@ -105,5 +118,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/students.js') }}"></script>
+<script src="{{ url_for('static', filename='js/students.js', v='20260715a') }}"></script>
 {% endblock %}

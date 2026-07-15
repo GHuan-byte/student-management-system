@@ -6,6 +6,16 @@ const addStudentButton = document.getElementById("addStudentButton");
 const studentModal = document.getElementById("studentModal");
 const studentForm = document.getElementById("studentForm");
 const modalTitle = document.getElementById("modalTitle");
+const selectAllStudents = document.getElementById("selectAllStudents");
+const batchDeleteButton = document.getElementById("batchDeleteButton");
+const selectedCount = document.getElementById("selectedCount");
+const importCsvButton = document.getElementById("importCsvButton");
+const exportCsvButton = document.getElementById("exportCsvButton");
+const exportExcelButton = document.getElementById("exportExcelButton");
+const importFileInput = document.getElementById("importFileInput");
+
+let selectedStudentIds = new Set();
+let currentStudents = [];
 
 document.addEventListener("DOMContentLoaded", () => {
     bindEvents();
@@ -16,6 +26,12 @@ function bindEvents() {
     searchButton?.addEventListener("click", () => loadStudents(searchInput.value.trim()));
     resetButton?.addEventListener("click", resetSearch);
     addStudentButton?.addEventListener("click", openAddModal);
+    batchDeleteButton?.addEventListener("click", batchDeleteStudents);
+    importCsvButton?.addEventListener("click", () => importFileInput?.click());
+    exportCsvButton?.addEventListener("click", () => exportStudents("csv"));
+    exportExcelButton?.addEventListener("click", () => exportStudents("xlsx"));
+    importFileInput?.addEventListener("change", importStudentsFromFile);
+    selectAllStudents?.addEventListener("change", toggleSelectAllStudents);
     document.getElementById("closeModalButton")?.addEventListener("click", closeModal);
     document.getElementById("cancelModalButton")?.addEventListener("click", closeModal);
     studentForm?.addEventListener("submit", submitStudentForm);
@@ -33,7 +49,7 @@ function bindEvents() {
 }
 
 async function loadStudents(keyword = "") {
-    studentsTableBody.innerHTML = '<tr><td colspan="10" class="empty-cell">正在加载学生数据...</td></tr>';
+    studentsTableBody.innerHTML = '<tr><td colspan="11" class="empty-cell">正在加载学生数据...</td></tr>';
     const url = keyword ? `/api/students?keyword=${encodeURIComponent(keyword)}` : "/api/students";
 
     try {
@@ -42,21 +58,34 @@ async function loadStudents(keyword = "") {
         if (!response.ok || !result.success) {
             throw new Error(result.message || "加载失败");
         }
-        renderStudents(result.data);
+
+        currentStudents = result.data;
+        syncSelectedStudents();
+        renderStudents(currentStudents);
+        updateBatchDeleteState();
     } catch (error) {
         showToast(error.message || "加载学生数据失败");
-        studentsTableBody.innerHTML = '<tr><td colspan="10" class="empty-cell">加载失败，请稍后重试。</td></tr>';
+        studentsTableBody.innerHTML = '<tr><td colspan="11" class="empty-cell">加载失败，请稍后重试。</td></tr>';
     }
 }
 
 function renderStudents(students) {
     if (!students.length) {
-        studentsTableBody.innerHTML = '<tr><td colspan="10" class="empty-cell">暂无学生数据</td></tr>';
+        studentsTableBody.innerHTML = '<tr><td colspan="11" class="empty-cell">暂无学生数据</td></tr>';
         return;
     }
 
     studentsTableBody.innerHTML = students.map((student) => `
         <tr>
+            <td class="checkbox-column">
+                <input
+                    type="checkbox"
+                    class="student-checkbox"
+                    data-student-id="${student.id}"
+                    ${selectedStudentIds.has(student.id) ? "checked" : ""}
+                    aria-label="选择学生 ${escapeHtml(student.name)}"
+                >
+            </td>
             <td>${student.id}</td>
             <td>${escapeHtml(student.student_number)}</td>
             <td>${escapeHtml(student.name)}</td>
@@ -74,10 +103,67 @@ function renderStudents(students) {
             </td>
         </tr>
     `).join("");
+
+    bindRowSelectionEvents();
+}
+
+function bindRowSelectionEvents() {
+    document.querySelectorAll(".student-checkbox").forEach((checkbox) => {
+        checkbox.addEventListener("change", function () {
+            const studentId = Number(this.dataset.studentId);
+            if (this.checked) {
+                selectedStudentIds.add(studentId);
+            } else {
+                selectedStudentIds.delete(studentId);
+            }
+            updateBatchDeleteState();
+        });
+    });
+}
+
+function syncSelectedStudents() {
+    const currentIds = new Set(currentStudents.map((student) => student.id));
+    selectedStudentIds = new Set(
+        Array.from(selectedStudentIds).filter((studentId) => currentIds.has(studentId))
+    );
+}
+
+function updateBatchDeleteState() {
+    const selected = selectedStudentIds.size;
+    if (selectedCount) {
+        selectedCount.textContent = `已选择 ${selected} 项`;
+    }
+    if (batchDeleteButton) {
+        batchDeleteButton.disabled = selected === 0;
+    }
+
+    if (!selectAllStudents) {
+        return;
+    }
+
+    const total = currentStudents.length;
+    selectAllStudents.checked = total > 0 && selected === total;
+    selectAllStudents.indeterminate = selected > 0 && selected < total;
+}
+
+function toggleSelectAllStudents() {
+    if (!selectAllStudents) {
+        return;
+    }
+
+    if (selectAllStudents.checked) {
+        currentStudents.forEach((student) => selectedStudentIds.add(student.id));
+    } else {
+        currentStudents.forEach((student) => selectedStudentIds.delete(student.id));
+    }
+
+    renderStudents(currentStudents);
+    updateBatchDeleteState();
 }
 
 function resetSearch() {
     searchInput.value = "";
+    selectedStudentIds.clear();
     loadStudents();
 }
 
@@ -119,6 +205,7 @@ async function editStudent(studentId) {
 
 async function submitStudentForm(event) {
     event.preventDefault();
+
     const studentId = document.getElementById("studentId").value;
     const payload = {
         student_number: document.getElementById("studentNumber").value.trim(),
@@ -144,6 +231,7 @@ async function submitStudentForm(event) {
         if (!response.ok || !result.success) {
             throw new Error(result.message || "保存失败");
         }
+
         closeModal();
         showToast(result.message || "保存成功");
         loadStudents(searchInput.value.trim());
@@ -163,6 +251,8 @@ async function deleteStudentRecord(studentId) {
         if (!response.ok || !result.success) {
             throw new Error(result.message || "删除失败");
         }
+
+        selectedStudentIds.delete(studentId);
         showToast(result.message || "删除成功");
         loadStudents(searchInput.value.trim());
     } catch (error) {
@@ -170,12 +260,78 @@ async function deleteStudentRecord(studentId) {
     }
 }
 
+async function batchDeleteStudents() {
+    const ids = Array.from(selectedStudentIds);
+    if (!ids.length) {
+        showToast("请先选择要删除的学生");
+        return;
+    }
+
+    if (!window.confirm(`确定批量删除选中的 ${ids.length} 条学生记录吗？`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch("/api/students/batch-delete", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || "批量删除失败");
+        }
+
+        selectedStudentIds.clear();
+        showToast(result.message || "批量删除成功");
+        loadStudents(searchInput.value.trim());
+    } catch (error) {
+        showToast(error.message || "批量删除失败");
+    }
+}
+
+async function importStudentsFromFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const response = await fetch("/api/students/import", {
+            method: "POST",
+            body: formData,
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || "导入失败");
+        }
+
+        const errorMessage = result.errors?.length ? `；${result.errors.join("；")}` : "";
+        showToast((result.message || "导入成功") + errorMessage);
+        selectedStudentIds.clear();
+        loadStudents(searchInput.value.trim());
+    } catch (error) {
+        showToast(error.message || "导入失败");
+    } finally {
+        event.target.value = "";
+    }
+}
+
+function exportStudents(format) {
+    const keyword = searchInput?.value.trim() || "";
+    const url = `/api/students/export?format=${encodeURIComponent(format)}&keyword=${encodeURIComponent(keyword)}`;
+    window.location.href = url;
+}
+
 function showToast(message) {
     const toast = document.createElement("div");
     toast.className = "toast";
     toast.textContent = message;
     document.body.appendChild(toast);
-    window.setTimeout(() => toast.remove(), 2600);
+    window.setTimeout(() => toast.remove(), 3200);
 }
 
 function escapeHtml(text) {

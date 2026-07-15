@@ -44,7 +44,6 @@ def init_db():
             )
             """
         )
-        # 兼容旧表: 新增 updated_at 列（如已存在则跳过）
         try:
             connection.execute("ALTER TABLE students ADD COLUMN updated_at TEXT")
         except sqlite3.OperationalError:
@@ -65,8 +64,8 @@ def validate_student_payload(payload):
 
     try:
         age = int(payload.get("age", 0))
-    except (TypeError, ValueError):
-        raise ValueError("age 必须为数字")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("age 必须为数字") from exc
 
     if age <= 0:
         raise ValueError("age 必须大于 0")
@@ -89,7 +88,11 @@ def normalize_student_payload(payload):
 def list_students():
     with closing(get_connection()) as connection:
         rows = connection.execute(
-            "SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at FROM students ORDER BY id DESC"
+            """
+            SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at
+            FROM students
+            ORDER BY id DESC
+            """
         ).fetchall()
     return [row_to_dict(row) for row in rows]
 
@@ -118,8 +121,25 @@ def search_students(keyword):
 def get_student_by_id(student_id):
     with closing(get_connection()) as connection:
         row = connection.execute(
-            "SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at FROM students WHERE id = ?",
+            """
+            SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at
+            FROM students
+            WHERE id = ?
+            """,
             (student_id,),
+        ).fetchone()
+    return row_to_dict(row)
+
+
+def get_student_by_number(student_number):
+    with closing(get_connection()) as connection:
+        row = connection.execute(
+            """
+            SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at
+            FROM students
+            WHERE student_number = ?
+            """,
+            (str(student_number).strip(),),
         ).fetchone()
     return row_to_dict(row)
 
@@ -168,11 +188,34 @@ def update_student(student_id, payload):
     return get_student_by_id(student_id)
 
 
+def upsert_student(payload):
+    student_number = str(payload.get("student_number", "")).strip()
+    existing = get_student_by_number(student_number) if student_number else None
+    if existing:
+        return "updated", update_student(existing["id"], payload)
+    return "created", add_student(payload)
+
+
 def delete_student(student_id):
     with closing(get_connection()) as connection:
         cursor = connection.execute("DELETE FROM students WHERE id = ?", (student_id,))
         connection.commit()
     return cursor.rowcount > 0
+
+
+def batch_delete_students(student_ids):
+    ids = [int(student_id) for student_id in student_ids]
+    if not ids:
+        return 0
+
+    placeholders = ",".join("?" for _ in ids)
+    with closing(get_connection()) as connection:
+        cursor = connection.execute(
+            f"DELETE FROM students WHERE id IN ({placeholders})",
+            ids,
+        )
+        connection.commit()
+    return cursor.rowcount
 
 
 def get_student_stats():

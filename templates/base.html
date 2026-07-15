@@ -60,9 +60,9 @@
             </div>
         </div>
 
-        <form class="ai-input-area" id="aiAssistantForm">
+        <form class="ai-input-area" id="aiForm">
             <textarea
-                id="aiAssistantInput"
+                id="aiInput"
                 placeholder="输入你的问题，Enter 发送，Shift + Enter 换行"
                 rows="3"
                 maxlength="500"
@@ -81,40 +81,7 @@
         <p>Student Management System with AI Assistant</p>
     </footer>
 
-    <script src="{{ url_for('static', filename='js/ai_assistant.js', v='20260714a') }}"></script>
-    <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        var openButton = document.getElementById('aiFloatingButton');
-        var closeButton = document.getElementById('aiCloseButton');
-        var overlay = document.getElementById('aiOverlay');
-        var sidebar = document.getElementById('aiSidebar');
-        var input = document.getElementById('aiAssistantInput');
-
-        function forceOpenSidebar() {
-            if (!sidebar || !overlay) {
-                return;
-            }
-            sidebar.classList.add('open');
-            overlay.classList.add('open');
-            sidebar.setAttribute('aria-hidden', 'false');
-            input?.focus();
-        }
-
-        function forceCloseSidebar() {
-            if (!sidebar || !overlay) {
-                return;
-            }
-            sidebar.classList.remove('open');
-            overlay.classList.remove('open');
-            sidebar.setAttribute('aria-hidden', 'true');
-        }
-
-        openButton?.addEventListener('click', forceOpenSidebar);
-        closeButton?.addEventListener('click', forceCloseSidebar);
-        overlay?.addEventListener('click', forceCloseSidebar);
-        window.addEventListener('open-ai-assistant', forceOpenSidebar);
-    });
-    </script>
+    <script src="{{ url_for('static', filename='js/ai_assistant.js', v='20260715b') }}" defer></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
