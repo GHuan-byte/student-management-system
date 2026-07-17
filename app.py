@@ -135,7 +135,12 @@ def students_page():
 @handle_errors
 def api_get_students():
     keyword = request.args.get("keyword", "").strip()
-    students = search_students(keyword) if keyword else list_students()
+    sort_by = request.args.get("sort_by", "id").strip()
+    sort_order = request.args.get("sort_order", "asc").strip()
+    if keyword:
+        students = search_students(keyword, sort_by=sort_by, sort_order=sort_order)
+    else:
+        students = list_students(sort_by=sort_by, sort_order=sort_order)
     return jsonify(
         {
             "success": True,

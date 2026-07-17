@@ -12,14 +12,15 @@
         </div>
     </div>
 
-    <div class="toolbar">
+    <form class="toolbar" id="searchForm">
         <input
             type="text"
             id="searchInput"
             class="search-input"
             placeholder="输入学号、姓名、专业、成绩、电话或邮箱"
+            aria-label="搜索学生"
         >
-        <button type="button" class="btn btn-secondary" id="searchButton">搜索</button>
+        <button type="submit" class="btn btn-secondary" id="searchButton">搜索</button>
         <button type="button" class="btn btn-secondary" id="resetButton">重置</button>
         <button type="button" class="btn btn-secondary" id="importCsvButton">导入 CSV/Excel</button>
         <button type="button" class="btn btn-secondary" id="exportCsvButton">导出 CSV</button>
@@ -27,27 +28,42 @@
         <button type="button" class="btn btn-danger" id="batchDeleteButton" disabled>批量删除</button>
         <button type="button" class="btn btn-primary" id="addStudentButton">新增学生</button>
         <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls" hidden>
-    </div>
+    </form>
 
     <div class="batch-actions">
         <span id="selectedCount">已选择 0 项</span>
+        <span id="searchResultCount"></span>
         <span>导入支持字段：学号、姓名、性别、年龄、专业、成绩、电话、邮箱</span>
     </div>
 
     <div class="table-wrap">
-        <table class="data-table">
+        <table class="data-table" id="studentsTable">
             <thead>
                 <tr>
                     <th class="checkbox-column">
-                        <input type="checkbox" id="selectAllStudents" aria-label="全选学生">
+                        <input type="checkbox" id="selectAllStudents" aria-label="选择当前显示的全部学生">
                     </th>
-                    <th>ID</th>
-                    <th>学号</th>
-                    <th>姓名</th>
-                    <th>性别</th>
-                    <th>年龄</th>
-                    <th>专业</th>
-                    <th>成绩</th>
+                    <th data-sort-key="id" aria-sort="none" class="sortable-th">
+                        ID <button type="button" class="sort-btn" aria-label="按 ID 排序">↕️</button>
+                    </th>
+                    <th data-sort-key="student_number" aria-sort="none" class="sortable-th">
+                        学号 <button type="button" class="sort-btn" aria-label="按学号排序">↕️</button>
+                    </th>
+                    <th data-sort-key="name" aria-sort="none" class="sortable-th">
+                        姓名 <button type="button" class="sort-btn" aria-label="按姓名排序">↕️</button>
+                    </th>
+                    <th data-sort-key="gender" aria-sort="none" class="sortable-th">
+                        性别 <button type="button" class="sort-btn" aria-label="按性别排序">↕️</button>
+                    </th>
+                    <th data-sort-key="age" aria-sort="none" class="sortable-th">
+                        年龄 <button type="button" class="sort-btn" aria-label="按年龄排序">↕️</button>
+                    </th>
+                    <th data-sort-key="major" aria-sort="none" class="sortable-th">
+                        专业 <button type="button" class="sort-btn" aria-label="按专业排序">↕️</button>
+                    </th>
+                    <th data-sort-key="grade" aria-sort="none" class="sortable-th">
+                        成绩 <button type="button" class="sort-btn" aria-label="按成绩排序">↕️</button>
+                    </th>
                     <th>电话</th>
                     <th>邮箱</th>
                     <th>操作</th>
@@ -118,5 +134,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/students.js', v='20260715a') }}"></script>
+<script 
+    src="{{ url_for('static', filename='js/students.js', v='20260716b') }}"
+    defer>
+</script>
 {% endblock %}

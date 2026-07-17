@@ -1,29 +1,79 @@
-const studentsTableBody = document.getElementById("studentsTableBody");
-const searchInput = document.getElementById("searchInput");
-const searchButton = document.getElementById("searchButton");
-const resetButton = document.getElementById("resetButton");
-const addStudentButton = document.getElementById("addStudentButton");
-const studentModal = document.getElementById("studentModal");
-const studentForm = document.getElementById("studentForm");
-const modalTitle = document.getElementById("modalTitle");
-const selectAllStudents = document.getElementById("selectAllStudents");
-const batchDeleteButton = document.getElementById("batchDeleteButton");
-const selectedCount = document.getElementById("selectedCount");
-const importCsvButton = document.getElementById("importCsvButton");
-const exportCsvButton = document.getElementById("exportCsvButton");
-const exportExcelButton = document.getElementById("exportExcelButton");
-const importFileInput = document.getElementById("importFileInput");
+let studentsTableBody = null;
+let searchInput = null;
+let searchForm = null;
+let resetButton = null;
+let addStudentButton = null;
+let studentModal = null;
+let studentForm = null;
+let modalTitle = null;
+let selectAllStudents = null;
+let batchDeleteButton = null;
+let selectedCount = null;
+let searchResultCount = null;
+let importCsvButton = null;
+let exportCsvButton = null;
+let exportExcelButton = null;
+let importFileInput = null;
 
 let selectedStudentIds = new Set();
 let currentStudents = [];
+let currentSortBy = "id";
+let currentSortOrder = "asc";
+let currentKeyword = "";
 
-document.addEventListener("DOMContentLoaded", () => {
+let studentsPageInitialized = false;
+
+function initStudentsPage() {
+    if (studentsPageInitialized) {
+        return;
+    }
+
+    studentsTableBody = document.getElementById("studentsTableBody");
+    searchInput = document.getElementById("searchInput");
+    searchForm = document.getElementById("searchForm");
+    resetButton = document.getElementById("resetButton");
+    addStudentButton = document.getElementById("addStudentButton");
+    studentModal = document.getElementById("studentModal");
+    studentForm = document.getElementById("studentForm");
+    modalTitle = document.getElementById("modalTitle");
+    selectAllStudents = document.getElementById("selectAllStudents");
+    batchDeleteButton = document.getElementById("batchDeleteButton");
+    selectedCount = document.getElementById("selectedCount");
+    searchResultCount = document.getElementById("searchResultCount");
+    importCsvButton = document.getElementById("importCsvButton");
+    exportCsvButton = document.getElementById("exportCsvButton");
+    exportExcelButton = document.getElementById("exportExcelButton");
+    importFileInput = document.getElementById("importFileInput");
+
+    if (!studentsTableBody || !searchForm || !searchInput) {
+        console.error("学生管理页面必要元素缺失", {
+            studentsTableBody,
+            searchForm,
+            searchInput,
+        });
+        return;
+    }
+
+    studentsPageInitialized = true;
+
     bindEvents();
     loadStudents();
-});
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initStudentsPage, {
+        once: true,
+    });
+} else {
+    initStudentsPage();
+}
 
 function bindEvents() {
-    searchButton?.addEventListener("click", () => loadStudents(searchInput.value.trim()));
+    searchForm?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        currentKeyword = searchInput.value.trim();
+        loadStudents();
+    });
     resetButton?.addEventListener("click", resetSearch);
     addStudentButton?.addEventListener("click", openAddModal);
     batchDeleteButton?.addEventListener("click", batchDeleteStudents);
@@ -35,25 +85,65 @@ function bindEvents() {
     document.getElementById("closeModalButton")?.addEventListener("click", closeModal);
     document.getElementById("cancelModalButton")?.addEventListener("click", closeModal);
     studentForm?.addEventListener("submit", submitStudentForm);
-    searchInput?.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            loadStudents(searchInput.value.trim());
-        }
-    });
     studentModal?.addEventListener("click", (event) => {
         if (event.target === studentModal) {
             closeModal();
         }
     });
+    bindSortEvents();
 }
 
-async function loadStudents(keyword = "") {
+function bindSortEvents() {
+    document.querySelectorAll("th[data-sort-key]").forEach((th) => {
+        const sortKey = th.dataset.sortKey;
+        const btn = th.querySelector(".sort-btn");
+        const handler = () => {
+            if (currentSortBy === sortKey) {
+                currentSortOrder = currentSortOrder === "asc" ? "desc" : "asc";
+            } else {
+                currentSortBy = sortKey;
+                currentSortOrder = "asc";
+            }
+            loadStudents();
+        };
+        btn?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            handler();
+        });
+        th.addEventListener("click", handler);
+    });
+}
+
+function updateSortIndicators() {
+    document.querySelectorAll("th[data-sort-key]").forEach((th) => {
+        const sortKey = th.dataset.sortKey;
+        const btn = th.querySelector(".sort-btn");
+        if (sortKey === currentSortBy) {
+            const indicator = currentSortOrder === "asc" ? "↑" : "↓";
+            btn.textContent = indicator;
+            th.setAttribute("aria-sort", currentSortOrder === "asc" ? "ascending" : "descending");
+        } else {
+            btn.textContent = "↕️";
+            th.setAttribute("aria-sort", "none");
+        }
+    });
+}
+
+function buildApiUrl() {
+    const params = new URLSearchParams();
+    if (currentKeyword) {
+        params.set("keyword", currentKeyword);
+    }
+    params.set("sort_by", currentSortBy);
+    params.set("sort_order", currentSortOrder);
+    return `/api/students?${params.toString()}`;
+}
+
+async function loadStudents() {
     studentsTableBody.innerHTML = '<tr><td colspan="11" class="empty-cell">正在加载学生数据...</td></tr>';
-    const url = keyword ? `/api/students?keyword=${encodeURIComponent(keyword)}` : "/api/students";
 
     try {
-        const response = await fetch(url);
+        const response = await fetch(buildApiUrl());
         const result = await response.json();
         if (!response.ok || !result.success) {
             throw new Error(result.message || "加载失败");
@@ -63,15 +153,29 @@ async function loadStudents(keyword = "") {
         syncSelectedStudents();
         renderStudents(currentStudents);
         updateBatchDeleteState();
+        updateSearchResultCount();
+        updateSortIndicators();
     } catch (error) {
         showToast(error.message || "加载学生数据失败");
         studentsTableBody.innerHTML = '<tr><td colspan="11" class="empty-cell">加载失败，请稍后重试。</td></tr>';
     }
 }
 
+function updateSearchResultCount() {
+    if (!searchResultCount) return;
+    if (currentKeyword) {
+        searchResultCount.textContent = `搜索 "${currentKeyword}" 找到 ${currentStudents.length} 条结果`;
+    } else {
+        searchResultCount.textContent = `共 ${currentStudents.length} 条记录`;
+    }
+}
+
 function renderStudents(students) {
     if (!students.length) {
-        studentsTableBody.innerHTML = '<tr><td colspan="11" class="empty-cell">暂无学生数据</td></tr>';
+        const message = currentKeyword
+            ? '未找到符合条件的学生'
+            : '暂无学生数据';
+        studentsTableBody.innerHTML = `<tr><td colspan="11" class="empty-cell">${message}</td></tr>`;
         return;
     }
 
@@ -142,12 +246,19 @@ function updateBatchDeleteState() {
     }
 
     const total = currentStudents.length;
-    selectAllStudents.checked = total > 0 && selected === total;
+    if (total === 0) {
+        selectAllStudents.checked = false;
+        selectAllStudents.indeterminate = false;
+        selectAllStudents.disabled = true;
+        return;
+    }
+    selectAllStudents.disabled = false;
+    selectAllStudents.checked = selected > 0 && selected === total;
     selectAllStudents.indeterminate = selected > 0 && selected < total;
 }
 
 function toggleSelectAllStudents() {
-    if (!selectAllStudents) {
+    if (!selectAllStudents || selectAllStudents.disabled) {
         return;
     }
 
@@ -162,7 +273,10 @@ function toggleSelectAllStudents() {
 }
 
 function resetSearch() {
+    currentKeyword = "";
     searchInput.value = "";
+    currentSortBy = "id";
+    currentSortOrder = "asc";
     selectedStudentIds.clear();
     loadStudents();
 }
@@ -234,7 +348,7 @@ async function submitStudentForm(event) {
 
         closeModal();
         showToast(result.message || "保存成功");
-        loadStudents(searchInput.value.trim());
+        loadStudents();
     } catch (error) {
         showToast(error.message || "保存学生信息失败");
     }
@@ -254,7 +368,7 @@ async function deleteStudentRecord(studentId) {
 
         selectedStudentIds.delete(studentId);
         showToast(result.message || "删除成功");
-        loadStudents(searchInput.value.trim());
+        loadStudents();
     } catch (error) {
         showToast(error.message || "删除学生失败");
     }
@@ -284,7 +398,7 @@ async function batchDeleteStudents() {
 
         selectedStudentIds.clear();
         showToast(result.message || "批量删除成功");
-        loadStudents(searchInput.value.trim());
+        loadStudents();
     } catch (error) {
         showToast(error.message || "批量删除失败");
     }
@@ -312,7 +426,8 @@ async function importStudentsFromFile(event) {
         const errorMessage = result.errors?.length ? `；${result.errors.join("；")}` : "";
         showToast((result.message || "导入成功") + errorMessage);
         selectedStudentIds.clear();
-        loadStudents(searchInput.value.trim());
+        currentKeyword = searchInput.value.trim();
+        loadStudents();
     } catch (error) {
         showToast(error.message || "导入失败");
     } finally {
@@ -321,7 +436,7 @@ async function importStudentsFromFile(event) {
 }
 
 function exportStudents(format) {
-    const keyword = searchInput?.value.trim() || "";
+    const keyword = currentKeyword || searchInput?.value.trim() || "";
     const url = `/api/students/export?format=${encodeURIComponent(format)}&keyword=${encodeURIComponent(keyword)}`;
     window.location.href = url;
 }

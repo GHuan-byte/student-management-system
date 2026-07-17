@@ -85,23 +85,46 @@ def normalize_student_payload(payload):
     }
 
 
-def list_students():
+SORT_WHITELIST = {
+    "id", "student_number", "name", "gender", "age", "major", "grade",
+}
+
+NUMERIC_SORT_FIELDS = {"id", "age", "grade"}
+
+
+def _build_order_clause(sort_by: str, sort_order: str) -> str:
+    sort_by = sort_by.strip().lower() if sort_by else "id"
+    sort_order = sort_order.strip().lower() if sort_order else "asc"
+
+    if sort_by not in SORT_WHITELIST:
+        sort_by = "id"
+    if sort_order not in ("asc", "desc"):
+        sort_order = "asc"
+
+    if sort_by in NUMERIC_SORT_FIELDS:
+        return f"ORDER BY CAST({sort_by} AS INTEGER) {sort_order}"
+    return f"ORDER BY {sort_by} {sort_order}"
+
+
+def list_students(sort_by: str = "id", sort_order: str = "asc"):
+    order_clause = _build_order_clause(sort_by, sort_order)
     with closing(get_connection()) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at
             FROM students
-            ORDER BY id DESC
+            {order_clause}
             """
         ).fetchall()
     return [row_to_dict(row) for row in rows]
 
 
-def search_students(keyword):
+def search_students(keyword, sort_by: str = "id", sort_order: str = "asc"):
+    order_clause = _build_order_clause(sort_by, sort_order)
     query = f"%{keyword.strip()}%"
     with closing(get_connection()) as connection:
         rows = connection.execute(
-            """
+            f"""
             SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at
             FROM students
             WHERE student_number LIKE ?
@@ -111,7 +134,7 @@ def search_students(keyword):
                OR grade LIKE ?
                OR phone LIKE ?
                OR email LIKE ?
-            ORDER BY id DESC
+            {order_clause}
             """,
             (query, query, query, query, query, query, query),
         ).fetchall()

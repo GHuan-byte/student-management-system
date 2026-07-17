@@ -11,10 +11,9 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0,str(PROJECT_ROOT))
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-
-
+load_dotenv()
 
 from mcp.server.fastmcp import FastMCP
 
@@ -22,10 +21,8 @@ from mcp_server.student_tools import register_student_tools
 
 
 # ============================================================
-# 1. 创建 MCP Server
+# 1. 创建 MCP Server (移至第 3 节)
 # ============================================================
-
-mcp = FastMCP("Student Management MCP Server")
 
 # ============================================================
 # 2. HTTP 配置
@@ -33,7 +30,6 @@ mcp = FastMCP("Student Management MCP Server")
 
 MCP_HOST = os.getenv("MCP_HOST", "127.0.0.1")
 MCP_PORT = int(os.getenv("MCP_PORT", "8000"))
-MCP_PATH = os.getenv("MCP_PATH", "/mcp")
 
 
 
@@ -53,9 +49,6 @@ mcp = FastMCP(
     # 网络监听设置
     host=MCP_HOST,
     port=MCP_PORT,
-
-    # MCP HTTP 端点
-    streamable_http_path=MCP_PATH,
 )
 
 

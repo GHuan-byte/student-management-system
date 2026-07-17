@@ -169,6 +169,7 @@ body::before {
 .toolbar {
     margin-bottom: 16px;
     flex-wrap: wrap;
+    width: 100%;
 }
 
 .batch-actions {
@@ -179,6 +180,15 @@ body::before {
     color: var(--text-secondary);
     font-size: 0.9rem;
     flex-wrap: wrap;
+}
+
+.batch-actions > span:first-child {
+    flex-shrink: 0;
+}
+
+.batch-actions > span:last-child {
+    text-align: right;
+    flex-shrink: 0;
 }
 
 .search-input,
@@ -317,6 +327,37 @@ body::before {
     color: #fff;
     font-size: 0.84rem;
     font-weight: 600;
+}
+
+.sortable-th {
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.sortable-th:hover {
+    background: #3a4148;
+}
+
+.sort-btn {
+    background: none;
+    border: none;
+    color: #bcc6d0;
+    cursor: pointer;
+    font-size: 0.82rem;
+    padding: 2px 4px;
+    margin-left: 2px;
+    border-radius: 3px;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.sortable-th:hover .sort-btn {
+    color: #fff;
+}
+
+.sort-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .data-table tbody tr:nth-child(even) {
@@ -888,4 +929,23 @@ body::before {
     .ai-sidebar {
         width: 100vw;
     }
+}
+
+#searchResultCount {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    text-align: center;
+    flex: 1;
+}
+
+th[aria-sort="ascending"] .sort-btn,
+th[aria-sort="descending"] .sort-btn {
+    color: #fff;
+    font-weight: 700;
+}
+
+/* 无结果时下拉框不可见的辅助样式 */
+.select-all-wrapper {
+    display: inline-flex;
+    align-items: center;
 }
