@@ -26,6 +26,7 @@ from db import (
     search_students,
     update_student,
     upsert_student,
+    count_students,
 )
 
 
@@ -137,15 +138,62 @@ def api_get_students():
     keyword = request.args.get("keyword", "").strip()
     sort_by = request.args.get("sort_by", "id").strip()
     sort_order = request.args.get("sort_order", "asc").strip()
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 15, type=int)
+
+    # 防止非法页码
+    page = max(page or 1, 1)
+
+    # 默认每页15条，同时避免用户传入过大的数字
+    page_size = min(
+        max(page_size or 15, 1),
+        100,
+    )
+
+    # 先统计符合条件的总记录数
+    total = count_students(keyword)
+
+    # 计算总页数
+    total_pages = max(
+        1,
+        (total + page_size - 1) // page_size,
+    )
+
+    # 请求超过最后一页时，自动回到最后一页
+    page = min(page, total_pages)
+
+    offset = (page - 1) * page_size
+
     if keyword:
-        students = search_students(keyword, sort_by=sort_by, sort_order=sort_order)
+        students = search_students(
+            keyword,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            limit=page_size,
+            offset=offset,
+        )
     else:
-        students = list_students(sort_by=sort_by, sort_order=sort_order)
+        students = list_students(
+            sort_by=sort_by,
+            sort_order=sort_order,
+            limit=page_size,
+            offset=offset,
+        )
+
     return jsonify(
         {
             "success": True,
             "data": students,
+
+            # 当前页实际返回多少条
             "count": len(students),
+
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": total_pages,
+            },
         }
     )
 

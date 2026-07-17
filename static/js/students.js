@@ -21,6 +21,19 @@ let currentSortBy = "id";
 let currentSortOrder = "asc";
 let currentKeyword = "";
 
+const pageSize = 15;
+
+let currentPage = 1;
+let totalPages = 1;
+let totalStudents = 0;
+
+let paginationSummary = null;
+let pageNumberButtons = null;
+let firstPageButton = null;
+let previousPageButton = null;
+let nextPageButton = null;
+let lastPageButton = null;
+
 let studentsPageInitialized = false;
 
 function initStudentsPage() {
@@ -44,6 +57,25 @@ function initStudentsPage() {
     exportCsvButton = document.getElementById("exportCsvButton");
     exportExcelButton = document.getElementById("exportExcelButton");
     importFileInput = document.getElementById("importFileInput");
+
+
+    paginationSummary =
+        document.getElementById("paginationSummary");
+
+    pageNumberButtons =
+        document.getElementById("pageNumberButtons");
+
+    firstPageButton =
+        document.getElementById("firstPageButton");
+
+    previousPageButton =
+        document.getElementById("previousPageButton");
+
+    nextPageButton =
+        document.getElementById("nextPageButton");
+
+    lastPageButton =
+        document.getElementById("lastPageButton");
 
     if (!studentsTableBody || !searchForm || !searchInput) {
         console.error("学生管理页面必要元素缺失", {
@@ -71,9 +103,15 @@ if (document.readyState === "loading") {
 function bindEvents() {
     searchForm?.addEventListener("submit", (event) => {
         event.preventDefault();
+
         currentKeyword = searchInput.value.trim();
+        currentPage = 1;
+        selectedStudentIds.clear();
+
         loadStudents();
     });
+
+
     resetButton?.addEventListener("click", resetSearch);
     addStudentButton?.addEventListener("click", openAddModal);
     batchDeleteButton?.addEventListener("click", batchDeleteStudents);
@@ -90,6 +128,27 @@ function bindEvents() {
             closeModal();
         }
     });
+
+    // 首页
+    firstPageButton?.addEventListener("click", () => {
+        goToPage(1);
+    });
+
+    // 上一页
+    previousPageButton?.addEventListener("click", () => {
+        goToPage(currentPage - 1);
+    });
+
+    // 下一页
+    nextPageButton?.addEventListener("click", () => {
+        goToPage(currentPage + 1);
+    });
+
+    // 末页
+    lastPageButton?.addEventListener("click", () => {
+        goToPage(totalPages);
+    });
+
     bindSortEvents();
 }
 
@@ -104,6 +163,10 @@ function bindSortEvents() {
                 currentSortBy = sortKey;
                 currentSortOrder = "asc";
             }
+
+            currentPage = 1;
+            selectedStudentIds.clear();
+
             loadStudents();
         };
         btn?.addEventListener("click", (e) => {
@@ -131,11 +194,16 @@ function updateSortIndicators() {
 
 function buildApiUrl() {
     const params = new URLSearchParams();
+
     if (currentKeyword) {
         params.set("keyword", currentKeyword);
     }
+
     params.set("sort_by", currentSortBy);
     params.set("sort_order", currentSortOrder);
+    params.set("page", currentPage);
+    params.set("page_size", pageSize);
+
     return `/api/students?${params.toString()}`;
 }
 
@@ -150,11 +218,21 @@ async function loadStudents() {
         }
 
         currentStudents = result.data;
+
+        const pagination = result.pagination || {};
+
+        currentPage = pagination.page || 1;
+        totalPages = pagination.total_pages || 1;
+        totalStudents = pagination.total || 0;
+
+        selectedStudentIds.clear();
+
         syncSelectedStudents();
         renderStudents(currentStudents);
         updateBatchDeleteState();
         updateSearchResultCount();
         updateSortIndicators();
+        renderPagination();
     } catch (error) {
         showToast(error.message || "加载学生数据失败");
         studentsTableBody.innerHTML = '<tr><td colspan="11" class="empty-cell">加载失败，请稍后重试。</td></tr>';
@@ -162,11 +240,16 @@ async function loadStudents() {
 }
 
 function updateSearchResultCount() {
-    if (!searchResultCount) return;
+    if (!searchResultCount) {
+        return;
+    }
+
     if (currentKeyword) {
-        searchResultCount.textContent = `搜索 "${currentKeyword}" 找到 ${currentStudents.length} 条结果`;
+        searchResultCount.textContent =
+            `搜索 "${currentKeyword}" 找到 ${totalStudents} 条结果`;
     } else {
-        searchResultCount.textContent = `共 ${currentStudents.length} 条记录`;
+        searchResultCount.textContent =
+            `共 ${totalStudents} 条记录`;
     }
 }
 
@@ -233,28 +316,49 @@ function syncSelectedStudents() {
 }
 
 function updateBatchDeleteState() {
-    const selected = selectedStudentIds.size;
+    const currentPageIds = new Set(
+        currentStudents.map((student) => student.id)
+    );
+
+    const selectedOnCurrentPage = Array
+        .from(selectedStudentIds)
+        .filter((studentId) => {
+            return currentPageIds.has(studentId);
+        })
+        .length;
+
     if (selectedCount) {
-        selectedCount.textContent = `已选择 ${selected} 项`;
+        selectedCount.textContent =
+            `已选择 ${selectedOnCurrentPage} 项`;
     }
+
     if (batchDeleteButton) {
-        batchDeleteButton.disabled = selected === 0;
+        batchDeleteButton.disabled =
+            selectedOnCurrentPage === 0;
     }
 
     if (!selectAllStudents) {
         return;
     }
 
-    const total = currentStudents.length;
-    if (total === 0) {
+    const totalOnCurrentPage =
+        currentStudents.length;
+
+    if (totalOnCurrentPage === 0) {
         selectAllStudents.checked = false;
         selectAllStudents.indeterminate = false;
         selectAllStudents.disabled = true;
         return;
     }
+
     selectAllStudents.disabled = false;
-    selectAllStudents.checked = selected > 0 && selected === total;
-    selectAllStudents.indeterminate = selected > 0 && selected < total;
+
+    selectAllStudents.checked =
+        selectedOnCurrentPage === totalOnCurrentPage;
+
+    selectAllStudents.indeterminate =
+        selectedOnCurrentPage > 0 &&
+        selectedOnCurrentPage < totalOnCurrentPage;
 }
 
 function toggleSelectAllStudents() {
@@ -277,6 +381,8 @@ function resetSearch() {
     searchInput.value = "";
     currentSortBy = "id";
     currentSortOrder = "asc";
+    currentPage = 1;
+
     selectedStudentIds.clear();
     loadStudents();
 }
@@ -456,6 +562,75 @@ function escapeHtml(text) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+}
+
+function goToPage(page) {
+    if (page < 1 || page > totalPages || page === currentPage) {
+        return;
+    }
+
+    currentPage = page;
+    selectedStudentIds.clear();
+    loadStudents();
+}
+
+function renderPagination() {
+    if (paginationSummary) {
+        paginationSummary.textContent =
+            `第 ${currentPage} 页，共 ${totalPages} 页，共 ${totalStudents} 条记录`;
+    }
+
+    if (firstPageButton) {
+        firstPageButton.disabled = currentPage <= 1;
+    }
+
+    if (previousPageButton) {
+        previousPageButton.disabled = currentPage <= 1;
+    }
+
+    if (nextPageButton) {
+        nextPageButton.disabled =
+            currentPage >= totalPages;
+    }
+
+    if (lastPageButton) {
+        lastPageButton.disabled =
+            currentPage >= totalPages;
+    }
+
+    if (!pageNumberButtons) {
+        return;
+    }
+
+    pageNumberButtons.innerHTML = "";
+
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(
+        totalPages,
+        currentPage + 2
+    );
+
+    for (
+        let page = startPage;
+        page <= endPage;
+        page += 1
+    ) {
+        const button = document.createElement("button");
+
+        button.type = "button";
+        button.className =
+            page === currentPage
+                ? "btn btn-primary"
+                : "btn btn-secondary";
+
+        button.textContent = String(page);
+
+        button.addEventListener("click", () => {
+            goToPage(page);
+        });
+
+        pageNumberButtons.appendChild(button);
+    }
 }
 
 window.editStudent = editStudent;

@@ -106,26 +106,130 @@ def _build_order_clause(sort_by: str, sort_order: str) -> str:
     return f"ORDER BY {sort_by} {sort_order}"
 
 
-def list_students(sort_by: str = "id", sort_order: str = "asc"):
-    order_clause = _build_order_clause(sort_by, sort_order)
+def list_students(
+    sort_by: str = "id",
+    sort_order: str = "asc",
+    limit=None,
+    offset=0,
+):
+    order_clause = _build_order_clause(
+        sort_by,
+        sort_order,
+    )
+
+    sql = f"""
+        SELECT
+            id,
+            student_number,
+            name,
+            gender,
+            age,
+            major,
+            grade,
+            phone,
+            email,
+            updated_at
+        FROM students
+        {order_clause}
+    """
+
+    params = []
+
+    if limit is not None:
+        limit = max(int(limit), 1)
+        offset = max(int(offset), 0)
+
+        sql += " LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
     with closing(get_connection()) as connection:
         rows = connection.execute(
-            f"""
-            SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at
-            FROM students
-            {order_clause}
-            """
+            sql,
+            params,
         ).fetchall()
+
     return [row_to_dict(row) for row in rows]
 
 
-def search_students(keyword, sort_by: str = "id", sort_order: str = "asc"):
-    order_clause = _build_order_clause(sort_by, sort_order)
-    query = f"%{keyword.strip()}%"
+
+def search_students(
+    keyword,
+    sort_by: str = "id",
+    sort_order: str = "asc",
+    limit=None,
+    offset=0,
+):
+    order_clause = _build_order_clause(
+        sort_by,
+        sort_order,
+    )
+
+    query = f"%{str(keyword).strip()}%"
+
+    sql = f"""
+        SELECT
+            id,
+            student_number,
+            name,
+            gender,
+            age,
+            major,
+            grade,
+            phone,
+            email,
+            updated_at
+        FROM students
+        WHERE student_number LIKE ?
+           OR name LIKE ?
+           OR gender LIKE ?
+           OR major LIKE ?
+           OR grade LIKE ?
+           OR phone LIKE ?
+           OR email LIKE ?
+        {order_clause}
+    """
+
+    params = [
+        query,
+        query,
+        query,
+        query,
+        query,
+        query,
+        query,
+    ]
+
+    if limit is not None:
+        limit = max(int(limit), 1)
+        offset = max(int(offset), 0)
+
+        sql += " LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
     with closing(get_connection()) as connection:
         rows = connection.execute(
-            f"""
-            SELECT id, student_number, name, gender, age, major, grade, phone, email, updated_at
+            sql,
+            params,
+        ).fetchall()
+
+    return [row_to_dict(row) for row in rows]
+
+def count_students(keyword=""):
+    keyword = str(keyword or "").strip()
+
+    with closing(get_connection()) as connection:
+        if not keyword:
+            row = connection.execute(
+                "SELECT COUNT(*) AS total FROM students"
+            ).fetchone()
+
+            return int(row["total"])
+
+        query = f"%{keyword}%"
+
+        row = connection.execute(
+            """
+            SELECT COUNT(*) AS total
             FROM students
             WHERE student_number LIKE ?
                OR name LIKE ?
@@ -134,12 +238,19 @@ def search_students(keyword, sort_by: str = "id", sort_order: str = "asc"):
                OR grade LIKE ?
                OR phone LIKE ?
                OR email LIKE ?
-            {order_clause}
             """,
-            (query, query, query, query, query, query, query),
-        ).fetchall()
-    return [row_to_dict(row) for row in rows]
+            (
+                query,
+                query,
+                query,
+                query,
+                query,
+                query,
+                query,
+            ),
+        ).fetchone()
 
+    return int(row["total"])
 
 def get_student_by_id(student_id):
     with closing(get_connection()) as connection:
