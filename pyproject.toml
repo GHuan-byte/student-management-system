@@ -11,3 +11,6 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "requests>=2.31.0",
 ]
+
+[project.scripts]
+mcp-server = "mcp_server.server:main"

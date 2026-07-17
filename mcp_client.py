@@ -2,20 +2,28 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-from pathlib import Path
+import sys
 from typing import Any
 
-from dotenv import load_dotenv
-from mcp import ClientSession, types
-from mcp.client.streamable_http import streamable_http_client
+from mcp import ClientSession, StdioServerParameters, types
+from mcp.client.stdio import stdio_client
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+# 通过 stdio 启动 MCP Server 子进程的命令
+MCP_SERVER_COMMAND = sys.executable
+MCP_SERVER_ARGS = ["-m", "mcp_server.server"]
 
-load_dotenv(PROJECT_ROOT / ".env")
+_server_params: StdioServerParameters | None = None
 
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8000/mcp").strip()
+
+def _get_server_params() -> StdioServerParameters:
+    global _server_params
+    if _server_params is None:
+        _server_params = StdioServerParameters(
+            command=MCP_SERVER_COMMAND,
+            args=MCP_SERVER_ARGS,
+        )
+    return _server_params
 
 
 def _get_tool_input_schema(tool: Any) -> dict[str, Any]:
@@ -80,7 +88,8 @@ def _parse_tool_result(result: types.CallToolResult) -> dict[str, Any]:
 
 async def check_mcp_server_async() -> dict[str, Any]:
     try:
-        async with streamable_http_client(MCP_SERVER_URL) as (read_stream, write_stream, _):
+        params = _get_server_params()
+        async with stdio_client(params) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 initialize_result = await session.initialize()
                 tools_result = await session.list_tools()
@@ -91,7 +100,8 @@ async def check_mcp_server_async() -> dict[str, Any]:
 
                 return {
                     "success": True,
-                    "server_url": MCP_SERVER_URL,
+                    "command": MCP_SERVER_COMMAND,
+                    "args": MCP_SERVER_ARGS,
                     "server_name": getattr(server_info, "name", None) if server_info else None,
                     "tool_count": len(tool_names),
                     "tools": tool_names,
@@ -100,7 +110,8 @@ async def check_mcp_server_async() -> dict[str, Any]:
     except Exception as exc:
         return {
             "success": False,
-            "server_url": MCP_SERVER_URL,
+            "command": MCP_SERVER_COMMAND,
+            "args": MCP_SERVER_ARGS,
             "error_type": type(exc).__name__,
             "error": str(exc),
         }
@@ -111,7 +122,8 @@ def check_mcp_server() -> dict[str, Any]:
 
 
 async def list_mcp_tools_async() -> list[dict[str, Any]]:
-    async with streamable_http_client(MCP_SERVER_URL) as (read_stream, write_stream, _):
+    params = _get_server_params()
+    async with stdio_client(params) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
             result = await session.list_tools()
@@ -166,7 +178,8 @@ async def call_mcp_tool_async(
         raise TypeError("arguments must be a dictionary")
 
     try:
-        async with streamable_http_client(MCP_SERVER_URL) as (read_stream, write_stream, _):
+        params = _get_server_params()
+        async with stdio_client(params) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.call_tool(cleaned_tool_name, arguments=arguments)
@@ -203,7 +216,7 @@ def main() -> None:
     print(json.dumps(server_status, ensure_ascii=False, indent=2))
 
     if not server_status["success"]:
-        print("Start the MCP server first with: python -m mcp_server.server")
+        print("MCP server failed to start via stdio.")
         return
 
     tools = list_mcp_tools()
