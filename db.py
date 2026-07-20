@@ -48,6 +48,18 @@ def init_db():
             connection.execute("ALTER TABLE students ADD COLUMN updated_at TEXT")
         except sqlite3.OperationalError:
             pass
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'teacher',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
         connection.commit()
 
 
@@ -367,3 +379,45 @@ def get_student_stats():
         "latest_student_name": latest["name"] if latest else "暂无数据",
         "latest_student_time": latest["updated_at"] if latest and latest["updated_at"] else "暂无记录",
     }
+
+
+# ──────────────────────────────────────────
+# 用户 (users) 表操作
+# ──────────────────────────────────────────
+
+
+def get_user_by_id(user_id: int) -> dict | None:
+    with closing(get_connection()) as connection:
+        row = connection.execute(
+            "SELECT id, username, password_hash, role, created_at FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    return row_to_dict(row)
+
+
+def get_user_by_username(username: str) -> dict | None:
+    with closing(get_connection()) as connection:
+        row = connection.execute(
+            "SELECT id, username, password_hash, role, created_at FROM users WHERE username = ?",
+            (str(username).strip(),),
+        ).fetchone()
+    return row_to_dict(row)
+
+
+def create_user(username: str, password_hash: str, role: str = "teacher") -> dict:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with closing(get_connection()) as connection:
+        cursor = connection.execute(
+            "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            (str(username).strip(), password_hash, role, now),
+        )
+        connection.commit()
+        return get_user_by_id(cursor.lastrowid)
+
+
+def list_users() -> list[dict]:
+    with closing(get_connection()) as connection:
+        rows = connection.execute(
+            "SELECT id, username, role, created_at FROM users ORDER BY id ASC"
+        ).fetchall()
+    return [row_to_dict(row) for row in rows]

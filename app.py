@@ -5,7 +5,7 @@ from datetime import datetime
 from functools import wraps
 
 import pandas as pd
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file, session
 
 from ai_service import (
     create_session,
@@ -14,6 +14,7 @@ from ai_service import (
     rename_session,
     send_chat_message,
 )
+from auth import auth_bp, init_default_admin, login_required, role_required
 from db import (
     STUDENT_FIELDS,
     add_student,
@@ -31,6 +32,10 @@ from db import (
 
 
 app = Flask(__name__)
+app.secret_key = os.environ.get(
+    "FLASK_SECRET_KEY",
+    "student-management-system-dev-secret-key-2026",
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,6 +89,10 @@ def handle_errors(func):
 @app.before_request
 def initialize_database():
     init_db()
+    init_default_admin()
+
+
+app.register_blueprint(auth_bp)
 
 
 def normalize_import_dataframe(dataframe):
@@ -127,12 +136,19 @@ def index_page():
     )
 
 
+@app.route("/login")
+def login_page():
+    return render_template("login.html")
+
+
 @app.route("/students")
+@login_required
 def students_page():
-    return render_template("students.html")
+    return render_template("students.html", role=session.get("role"))
 
 
 @app.route("/api/students", methods=["GET"])
+@login_required
 @handle_errors
 def api_get_students():
     keyword = request.args.get("keyword", "").strip()
@@ -199,6 +215,7 @@ def api_get_students():
 
 
 @app.route("/api/students/<int:student_id>", methods=["GET"])
+@login_required
 @handle_errors
 def api_get_student(student_id):
     student = get_student_by_id(student_id)
@@ -208,6 +225,7 @@ def api_get_student(student_id):
 
 
 @app.route("/api/students", methods=["POST"])
+@login_required
 @handle_errors
 def api_create_student():
     data = request.get_json()
@@ -219,6 +237,7 @@ def api_create_student():
 
 
 @app.route("/api/students/<int:student_id>", methods=["PUT"])
+@login_required
 @handle_errors
 def api_update_student(student_id):
     data = request.get_json()
@@ -233,6 +252,7 @@ def api_update_student(student_id):
 
 
 @app.route("/api/students/<int:student_id>", methods=["DELETE"])
+@role_required("admin")
 @handle_errors
 def api_delete_student(student_id):
     deleted = delete_student(student_id)
@@ -242,6 +262,7 @@ def api_delete_student(student_id):
 
 
 @app.route("/api/students/batch-delete", methods=["DELETE"])
+@role_required("admin")
 @handle_errors
 def api_batch_delete_students():
     data = request.get_json() or {}
@@ -260,6 +281,7 @@ def api_batch_delete_students():
 
 
 @app.route("/api/students/import", methods=["POST"])
+@role_required("admin")
 @handle_errors
 def api_import_students():
     upload = request.files.get("file")
@@ -309,6 +331,7 @@ def api_import_students():
 
 
 @app.route("/api/students/export", methods=["GET"])
+@role_required("admin")
 @handle_errors
 def api_export_students():
     file_format = request.args.get("format", "csv").strip().lower()
@@ -343,6 +366,7 @@ def api_export_students():
 
 
 @app.route("/api/chat", methods=["POST"])
+@login_required
 @handle_errors
 def api_chat():
     data = request.get_json()
@@ -362,12 +386,14 @@ def api_chat():
 
 
 @app.route("/api/sessions", methods=["GET"])
+@login_required
 @handle_errors
 def api_get_sessions():
     return jsonify(list_sessions())
 
 
 @app.route("/api/sessions", methods=["POST"])
+@login_required
 @handle_errors
 def api_create_session():
     data = request.get_json() or {}
@@ -377,6 +403,7 @@ def api_create_session():
 
 
 @app.route("/api/sessions/<session_id>/messages", methods=["GET"])
+@login_required
 @handle_errors
 def api_get_session_messages(session_id):
     limit = request.args.get("limit", 100, type=int)
@@ -385,6 +412,7 @@ def api_get_session_messages(session_id):
 
 
 @app.route("/api/sessions/<session_id>/rename", methods=["PUT"])
+@login_required
 @handle_errors
 def api_rename_session(session_id):
     data = request.get_json() or {}

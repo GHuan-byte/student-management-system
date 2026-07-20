@@ -949,3 +949,140 @@ th[aria-sort="descending"] .sort-btn {
     display: inline-flex;
     align-items: center;
 }
+
+/* ──────────────────────────────────────────
+   登录页面样式
+   ────────────────────────────────────────── */
+
+.login-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #2f343a 0%, #1f8bff 100%);
+}
+
+.login-container {
+    width: 100%;
+    max-width: 400px;
+    padding: 20px;
+}
+
+.login-card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 40px 32px 28px;
+    box-shadow: var(--shadow);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 28px;
+}
+
+.login-header .brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    background: var(--primary);
+    color: #fff;
+    font-size: 1.5rem;
+    font-weight: 800;
+    border-radius: 10px;
+    margin-bottom: 12px;
+}
+
+.login-header h1 {
+    margin: 0 0 4px;
+    font-size: 1.25rem;
+    color: var(--text-primary);
+}
+
+.login-header p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.login-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.login-form label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.login-form .form-control {
+    padding: 10px 14px;
+    font-size: 0.95rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.login-form .form-control:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(47, 140, 255, 0.15);
+}
+
+.btn-block {
+    width: 100%;
+    padding: 11px 0;
+    font-size: 1rem;
+}
+
+.login-error {
+    background: #fef2f2;
+    color: var(--danger);
+    font-size: 0.85rem;
+    padding: 10px 14px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.login-footer {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.login-footer p {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+/* ──────────────────────────────────────────
+   导航栏用户信息
+   ────────────────────────────────────────── */
+
+.brand-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.nav-user-info {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    padding: 0 8px;
+    white-space: nowrap;
+}
+
+#navLogoutLink {
+    color: var(--danger);
+}

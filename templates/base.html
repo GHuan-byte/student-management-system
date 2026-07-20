@@ -11,15 +11,20 @@
     <header class="navbar">
         <div class="container navbar-inner">
             <div class="brand">
-                <span class="brand-mark">S</span>
-                <div>
-                    <h1>学生信息管理系统</h1>
-                    <p>Student Management System</p>
-                </div>
+                <a href="{{ url_for('index_page') }}" class="brand-link">
+                    <span class="brand-mark">S</span>
+                    <div>
+                        <h1>学生信息管理系统</h1>
+                        <p>Student Management System</p>
+                    </div>
+                </a>
             </div>
-            <nav class="nav-links">
+            <nav class="nav-links" id="mainNav">
                 <a href="{{ url_for('index_page') }}">首页</a>
-                <a href="{{ url_for('students_page') }}">学生管理</a>
+                <a href="{{ url_for('students_page') }}" id="navStudentsLink">学生管理</a>
+                <a href="{{ url_for('login_page') }}" id="navLoginLink">登录</a>
+                <a href="#" id="navLogoutLink" style="display:none;">退出</a>
+                <span id="navUserInfo" class="nav-user-info" style="display:none;"></span>
             </nav>
         </div>
     </header>
@@ -82,6 +87,58 @@
     </footer>
 
     <script src="{{ url_for('static', filename='js/ai_assistant.js', v='20260715b') }}" defer></script>
+
+    {% if request.endpoint != 'auth.login_page' %}
+    <script>
+    /**
+     * 检查登录状态，更新导航栏显示
+     */
+    document.addEventListener('DOMContentLoaded', function () {
+        var navLoginLink  = document.getElementById('navLoginLink');
+        var navLogoutLink = document.getElementById('navLogoutLink');
+        var navUserInfo   = document.getElementById('navUserInfo');
+        var navStudents   = document.getElementById('navStudentsLink');
+
+        fetch('/api/auth/me')
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success && data.user) {
+                    // 已登录
+                    if (navLoginLink)  navLoginLink.style.display = 'none';
+                    if (navLogoutLink) navLogoutLink.style.display = '';
+                    if (navUserInfo) {
+                        navUserInfo.style.display = '';
+                        navUserInfo.textContent = data.user.username + ' (' + data.user.role + ')';
+                    }
+                    if (navStudents) navStudents.style.display = '';
+                } else {
+                    // 未登录
+                    if (navLoginLink)  navLoginLink.style.display = '';
+                    if (navLogoutLink) navLogoutLink.style.display = 'none';
+                    if (navUserInfo)   navUserInfo.style.display = 'none';
+                    if (navStudents)   navStudents.style.display = 'none';
+                }
+            })
+            .catch(function () {
+                // 请求失败时默认未登录
+                if (navLoginLink)  navLoginLink.style.display = '';
+                if (navLogoutLink) navLogoutLink.style.display = 'none';
+                if (navUserInfo)   navUserInfo.style.display = 'none';
+            });
+
+        // 退出登录
+        if (navLogoutLink) {
+            navLogoutLink.addEventListener('click', function (event) {
+                event.preventDefault();
+                fetch('/api/auth/logout', { method: 'POST' })
+                    .then(function () { window.location.href = '/login'; })
+                    .catch(function () { window.location.href = '/login'; });
+            });
+        }
+    });
+    </script>
+    {% endif %}
+
     {% block extra_js %}{% endblock %}
 </body>
 </html>
