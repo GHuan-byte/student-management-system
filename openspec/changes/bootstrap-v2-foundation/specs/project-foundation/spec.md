@@ -15,26 +15,18 @@ The system SHALL provide a `create_app(config_name=None, config_overrides=None, 
 - **WHEN** `create_app("development")` is called and `APP_ENV=production` is set
 - **THEN** it SHALL use DevelopmentConfig regardless of `APP_ENV`
 
-#### Scenario: Production via APP_ENV
-- **WHEN** `create_app()` is called without `config_name` and `APP_ENV=production` is set
-- **THEN** it SHALL return a Flask application instance configured with ProductionConfig
-
 #### Scenario: Invalid config_name raises ValueError
 - **WHEN** `create_app("invalid")` is called
 - **THEN** a `ValueError` SHALL be raised
 
-#### Scenario: Testing with load_env=False
-- **WHEN** `create_app("testing", load_env=False)` is called
-- **THEN** it SHALL NOT load the `.env` file
-
 #### Scenario: config_overrides take highest precedence
 - **WHEN** `create_app("development", config_overrides={"TEST_KEY": "override"})` is called
-- **THEN** `app.config["TEST_KEY"]` SHALL equal `"override"`, taking precedence over all other config sources
+- **THEN** `app.config["TEST_KEY"]` SHALL equal `"override"`
 
 ---
 
 ### Requirement: Configuration boundaries
-The system SHALL define three configuration classes: `DevelopmentConfig`, `TestingConfig`, and `ProductionConfig`, all inheriting from a base `Config` class.
+The system SHALL define `DevelopmentConfig`, `TestingConfig`, and `ProductionConfig`, all inheriting from a base `Config` class.
 
 #### Scenario: Development configuration
 - **WHEN** DevelopmentConfig is used
@@ -46,19 +38,11 @@ The system SHALL define three configuration classes: `DevelopmentConfig`, `Testi
 
 #### Scenario: Production SECRET_KEY validation
 - **WHEN** ProductionConfig is used
-- **THEN** the system SHALL raise a `RuntimeError` on startup if `SECRET_KEY` is not set or equals the development default value
-
-#### Scenario: Production SECRET_KEY via config_overrides
-- **WHEN** ProductionConfig is used and `SECRET_KEY` is provided via `config_overrides`
-- **THEN** the application SHALL start normally without raising `RuntimeError`
-
-#### Scenario: Development SECRET_KEY default
-- **WHEN** DevelopmentConfig is used
-- **THEN** `SECRET_KEY` SHALL have a non-production default value that allows the application to start
+- **THEN** the system SHALL raise a `RuntimeError` on startup if `SECRET_KEY` is missing or still set to a development default
 
 #### Scenario: Foundation startup without DATABASE_PATH
 - **WHEN** the application starts without `DATABASE_PATH` set
-- **THEN** it SHALL NOT fail, because database configuration is not required in the Foundation phase
+- **THEN** it SHALL NOT fail, because database configuration is outside the Foundation phase
 
 ---
 
@@ -67,197 +51,129 @@ The system SHALL load environment variables from a `.env` file using `python-dot
 
 #### Scenario: .env loaded before config parsing
 - **WHEN** `create_app()` is called with `load_env=True`
-- **THEN** `load_dotenv()` SHALL be called before environment-related config values are parsed and applied from the environment
+- **THEN** `load_dotenv()` SHALL be called before environment-related config values are parsed and applied
 
 #### Scenario: System environment overrides .env
 - **WHEN** both the system environment and `.env` file define `SECRET_KEY`
-- **THEN** the system environment variable SHALL be used, because `load_dotenv()` does not override existing environment variables
+- **THEN** the system environment variable SHALL be used
 
-#### Scenario: Test isolation from .env
-- **WHEN** `create_app("testing", load_env=False)` is called
-- **THEN** the `.env` file SHALL NOT be loaded, preventing local environment pollution
-
-#### Scenario: config_overrides after config merge, before final validation
-- **WHEN** both `.env` file and `config_overrides` define the same key
-- **THEN** the value from `config_overrides` SHALL be used, because `config_overrides` is applied after the config merge and before the final validation step
+#### Scenario: config_overrides after config merge
+- **WHEN** both `.env` and `config_overrides` define the same key
+- **THEN** the value from `config_overrides` SHALL be used
 
 ---
 
 ### Requirement: Unified JSON response
 The system SHALL provide helper functions that return a consistent JSON response structure: `{"success": bool, "data": any, "message": str, "error": null|dict, "meta": dict}`.
 
-#### Scenario: Successful 200 response
-- **WHEN** `api_success(data={"key": "value"}, message="OK")` is called
-- **THEN** the response SHALL have status 200 with body `{"success": true, "data": {"key": "value"}, "message": "OK", "error": null, "meta": {}}`
+#### Scenario: Successful response structure
+- **WHEN** a success response is returned
+- **THEN** it SHALL include `success`, `data`, `message`, `error`, and `meta`
 
-#### Scenario: Successful 201 response
-- **WHEN** `api_success(data={"id": 1}, message="Created", status_code=201)` is called
-- **THEN** the response SHALL have status 201
+#### Scenario: Error response structure
+- **WHEN** an error response is returned
+- **THEN** it SHALL include `success`, `data`, `message`, `error`, and `meta`
 
-#### Scenario: Error response with code
-- **WHEN** `api_error(message="Not found", error={"code": "not_found", "details": None}, status_code=404)` is called
-- **THEN** the response SHALL have status 404 with `{"success": false, "data": null, "message": "Not found", "error": {"code": "not_found", "details": null}, "meta": {}}`
+#### Scenario: Paginated response metadata
+- **WHEN** a paginated response is returned
+- **THEN** `meta` SHALL include `page`, `page_size`, `total`, and `total_pages`
 
-#### Scenario: Paginated response with data
-- **WHEN** `api_paginated(data=["a"], total=50, page=1, page_size=15)` is called
-- **THEN** the response SHALL include `meta` with `{"page": 1, "page_size": 15, "total": 50, "total_pages": 4}`
-
-#### Scenario: Paginated response with total zero
-- **WHEN** `api_paginated(data=[], total=0, page=1, page_size=15)` is called
-- **THEN** `meta` SHALL contain `{"page": 1, "page_size": 15, "total": 0, "total_pages": 0}`
-
-#### Scenario: Invalid page_size raises ValueError
-- **WHEN** `api_paginated(data=[], total=0, page=1, page_size=0)` or `page_size=-1` is called
-- **THEN** a `ValueError` SHALL be raised
-
-#### Scenario: Error code field structure
+#### Scenario: Error object structure
 - **WHEN** an error response is created
-- **THEN** the `error` field SHALL be an object with `code` (string) and `details` (nullable), and SHALL NOT contain a raw Python Exception object
+- **THEN** the `error` field SHALL be an object with `code` and nullable `details`, and SHALL NOT contain a raw Python exception object
 
 ---
 
 ### Requirement: Application exceptions
-The system SHALL define a hierarchy of application exceptions: `AppError` as base, with `NotFoundError`, `ValidationError`, `DuplicateError`, and `ForbiddenError` subclasses. Each exception SHALL carry a `code`, `message`, `status_code`, and `details` (defaulting to `None`).
+The system SHALL define a hierarchy of application exceptions: `AppError` as base, with `NotFoundError`, `ValidationError`, `DuplicateError`, and `ForbiddenError` subclasses.
 
-#### Scenario: AppError has details attribute
-- **WHEN** `AppError("Something went wrong")` is created
-- **THEN** its `details` SHALL default to `None`
+#### Scenario: Application exception carries metadata
+- **WHEN** an application exception is created
+- **THEN** it SHALL carry `code`, `message`, `status_code`, and `details`
 
-#### Scenario: NotFoundError properties
-- **WHEN** `NotFoundError("Student not found")` is raised
-- **THEN** its `status_code` SHALL be 404 and `code` SHALL be `"not_found"`
+#### Scenario: NotFoundError maps to 404
+- **WHEN** `NotFoundError` is raised
+- **THEN** it SHALL represent status code 404 and code `"not_found"`
 
-#### Scenario: ValidationError properties
-- **WHEN** `ValidationError("Invalid age")` is raised
-- **THEN** its `status_code` SHALL be 400 and `code` SHALL be `"validation_error"`
-
-#### Scenario: DuplicateError properties
-- **WHEN** `DuplicateError("Student number exists")` is raised
-- **THEN** its `status_code` SHALL be 409 and `code` SHALL be `"duplicate"`
-
-#### Scenario: ForbiddenError properties
-- **WHEN** `ForbiddenError("Admin only")` is raised
-- **THEN** its `status_code` SHALL be 403 and `code` SHALL be `"forbidden"`
+#### Scenario: ValidationError maps to 400
+- **WHEN** `ValidationError` is raised
+- **THEN** it SHALL represent status code 400 and code `"validation_error"`
 
 ---
 
 ### Requirement: Global error handling
-The system SHALL register three global error handlers to cover `AppError`, `werkzeug.exceptions.HTTPException`, and unexpected `Exception`. All error responses SHALL use the full unified structure including `success`, `data`, `message`, `error`, and `meta`.
+The system SHALL register global error handlers for `AppError`, `werkzeug.exceptions.HTTPException`, and unexpected `Exception`.
 
 #### Scenario: AppError returns unified error response
-- **WHEN** a `NotFoundError` is raised during request processing
-- **THEN** the response SHALL be a full unified error JSON with status code 404
+- **WHEN** an `AppError` is raised during request processing
+- **THEN** the response SHALL use the unified JSON error structure
 
-#### Scenario: 404 HTTPException maps to not_found
-- **WHEN** a request is made to a non-existent route
-- **THEN** the response SHALL be a unified error JSON (not HTML) with `error.code` of `"not_found"`
-
-#### Scenario: 405 HTTPException maps to method_not_allowed
-- **WHEN** a request uses an HTTP method not allowed by the route
-- **THEN** the response SHALL be a unified error JSON with `error.code` of `"method_not_allowed"`
+#### Scenario: HTTPException returns unified error response
+- **WHEN** a `HTTPException` occurs during request processing
+- **THEN** the response SHALL use the unified JSON error structure instead of HTML
 
 #### Scenario: Unexpected exception returns generic 500
-- **WHEN** an unhandled `Exception` is raised during request processing
-- **THEN** the response SHALL have status 500 with the full unified structure `{"success": false, "data": null, "message": "Internal server error", "error": {"code": "internal_error", "details": null}, "meta": {}}`, and the full exception stack trace SHALL be logged
+- **WHEN** an unhandled `Exception` occurs
+- **THEN** the response SHALL return status 500 with unified JSON structure and SHALL NOT expose internal implementation details
 
 ---
 
 ### Requirement: Blueprint registration
-The system SHALL provide a `register_blueprints(app)` function in `app/__init__.py` that registers all application Blueprints.
+The system SHALL provide a `register_blueprints(app)` function that registers application Blueprints through a centralized integration point.
 
 #### Scenario: Health blueprint registered
 - **WHEN** the application starts
-- **THEN** the health check Blueprint SHALL be registered via `register_blueprints()`
+- **THEN** the health check Blueprint SHALL be registered through `register_blueprints()`
 
-#### Scenario: Health blueprint independently importable
-- **WHEN** the health Blueprint module is imported directly (not via `register_blueprints`)
-- **THEN** it SHALL NOT cause circular import errors
+#### Scenario: Blueprint registration avoids circular imports
+- **WHEN** route modules are imported for registration
+- **THEN** the registration structure SHALL avoid circular import failures
 
 ---
 
-### Requirement: Health check endpoint
+### Requirement: Health check
 The system SHALL provide a `GET /api/health` endpoint that returns a unified success response.
 
 #### Scenario: Health check returns ok
 - **WHEN** a GET request is sent to `/api/health`
-- **THEN** the response SHALL have status 200 and body `{"success": true, "data": {"status": "ok"}, "message": "", "error": null, "meta": {}}`
+- **THEN** the response SHALL return status 200
+- **AND** the response body SHALL use the unified JSON structure
+- **AND** `data.status` SHALL equal `"ok"`
 
 ---
 
 ### Requirement: Logging configuration
-The system SHALL provide a `configure_logging(app)` function using `logging.config.dictConfig` that configures the root logger. The function SHALL be idempotent: calling it multiple times SHALL NOT add duplicate app-managed handlers or produce duplicate log output.
+The system SHALL provide a `configure_logging(app)` function that configures application logging through a centralized entry point.
 
-#### Scenario: LOG_LEVEL from app.config
-- **WHEN** `LOG_LEVEL=DEBUG` is set in environment and `create_app()` stores it in `app.config["LOG_LEVEL"]`
-- **THEN** `configure_logging(app)` SHALL read `LOG_LEVEL` from `app.config` and set the root logger level to `DEBUG`
+#### Scenario: LOG_LEVEL comes from configuration
+- **WHEN** logging is configured
+- **THEN** the effective log level SHALL be derived from application configuration
 
-#### Scenario: Default log level
-- **WHEN** `LOG_LEVEL` is not set
-- **THEN** `app.config["LOG_LEVEL"]` SHALL default to `"INFO"`, and `configure_logging(app)` SHALL set the root logger level to `INFO`
-
-#### Scenario: Multiple calls do not duplicate handlers
-- **WHEN** `configure_logging(app)` is called twice
-- **THEN** the root logger SHALL NOT have duplicate handlers, and log output SHALL NOT be duplicated
+#### Scenario: Logging setup is idempotent
+- **WHEN** logging configuration is applied more than once
+- **THEN** it SHALL NOT create duplicate application-managed logging behavior
 
 ---
 
 ### Requirement: Application entry point
-The system SHALL provide a `run.py` entry point that starts the Flask development server with configurable host and port. Testing SHALL use argument parsing and `mock.patch` on `app.run`, not start a blocking server.
+The system SHALL provide a `run.py` entry point that starts the Flask application with configurable host and port.
 
 #### Scenario: Default host and port
-- **WHEN** `python run.py` is executed without arguments
-- **THEN** the server SHALL start on `127.0.0.1:5001` (default values), verified via argument parsing and mocked `app.run`
+- **WHEN** `python run.py` is executed without arguments or environment overrides
+- **THEN** the application SHALL start with default host `127.0.0.1` and default port `5001`
 
 #### Scenario: Command-line arguments override environment variables
 - **WHEN** `python run.py --host 0.0.0.0 --port 8080` is executed
-- **THEN** the server SHALL start on `0.0.0.0:8080`, verified via argument parsing and mocked `app.run`
+- **THEN** the command-line values SHALL take precedence over environment variables and defaults
 
-#### Scenario: Environment variables as fallback
-- **WHEN** `FLASK_HOST=0.0.0.0 FLASK_PORT=9000 python run.py` is executed without `--host` or `--port`
-- **THEN** the server SHALL start on `0.0.0.0:9000`, verified via argument parsing and mocked `app.run`
-
----
-
-### Requirement: Foundation documentation
-The system SHALL update `README.md` to include installation, testing, startup, and health check instructions, as well as a clear statement of what is not yet implemented in the Foundation phase.
-
-#### Scenario: README contains setup instructions
-- **WHEN** `README.md` is read
-- **THEN** it SHALL contain instructions for installing dependencies (`pip install -e .` or equivalent)
-
-#### Scenario: README contains test instructions
-- **WHEN** `README.md` is read
-- **THEN** it SHALL contain instructions for running tests (`pytest`)
-
-#### Scenario: README contains startup instructions
-- **WHEN** `README.md` is read
-- **THEN** it SHALL contain instructions for starting the application (`python run.py`)
-
-#### Scenario: README contains health check instructions
-- **WHEN** `README.md` is read
-- **THEN** it SHALL describe how to verify the application is running (`curl http://127.0.0.1:5001/api/health`)
-
-#### Scenario: README documents unimplemented scope
-- **WHEN** `README.md` is read
-- **THEN** it SHALL state which features are not yet implemented in this phase (database, authentication, student CRUD, MCP, AI Chat, etc.)
-
----
-
-### Requirement: Environment variable template
-The system SHALL provide a `.env.example` file containing all environment variables the application recognizes. It SHALL use placeholder values only and MUST NOT contain real secrets.
-
-#### Scenario: All env vars documented
-- **WHEN** `.env.example` is read
-- **THEN** it SHALL define `APP_ENV`, `SECRET_KEY`, `LOG_LEVEL`, `FLASK_HOST`, `FLASK_PORT`, `MCP_TRANSPORT`, `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, `OPENAI_API_BASE`, `OPENAI_API_KEY`, and `OPENAI_MODEL`
-
-#### Scenario: No real secrets in template
-- **WHEN** `.env.example` is read
-- **THEN** `SECRET_KEY`, `OPENAI_API_KEY`, and any other sensitive values SHALL be placeholder strings (e.g., `"replace-with-development-secret"`)
+#### Scenario: Environment variables act as fallback
+- **WHEN** `FLASK_HOST` and `FLASK_PORT` are set and CLI arguments are omitted
+- **THEN** the application SHALL use the environment values as fallback
 
 ---
 
 ### Requirement: pyproject.toml project metadata
-The system SHALL declare project metadata and dependencies in `pyproject.toml`.
+The system SHALL declare project metadata and Foundation dependencies in `pyproject.toml`.
 
 #### Scenario: Flask dependency declared
 - **WHEN** `pyproject.toml` is parsed
@@ -267,27 +183,48 @@ The system SHALL declare project metadata and dependencies in `pyproject.toml`.
 - **WHEN** `pyproject.toml` is parsed
 - **THEN** it SHALL include `python-dotenv>=1.0` as a dependency
 
-#### Scenario: pytest as dev dependency
-- **WHEN** `pyproject.toml` is parsed
-- **THEN** it SHALL include `pytest>=8.0` as an optional/dev dependency
-
 #### Scenario: Python version requirement
 - **WHEN** `pyproject.toml` is parsed
 - **THEN** `requires-python` SHALL be `">=3.12"`
 
 ---
 
-### Requirement: pytest infrastructure
-The system SHALL provide a `conftest.py` file with shared pytest fixtures for application testing.
+### Requirement: Foundation documentation
+The system SHALL update `README.md` and `.env.example` to document manual setup and manual Foundation verification.
 
-#### Scenario: App fixture without .env
-- **WHEN** the `app` fixture is used in a test
-- **THEN** it SHALL create a Flask app using `create_app("testing", load_env=False)`
+#### Scenario: README contains manual install instructions
+- **WHEN** `README.md` is read
+- **THEN** it SHALL include user-facing dependency installation commands
 
-#### Scenario: Client fixture
-- **WHEN** the `client` fixture is used in a test
-- **THEN** it SHALL return a Flask test client bound to the `app` fixture
+#### Scenario: README contains startup instructions
+- **WHEN** `README.md` is read
+- **THEN** it SHALL include instructions for starting the application with `python run.py`
 
-#### Scenario: Health check test
-- **WHEN** `pytest` is run
-- **THEN** a test SHALL verify that `GET /api/health` returns status 200 with the expected response format
+#### Scenario: README contains health check instructions
+- **WHEN** `README.md` is read
+- **THEN** it SHALL describe how to verify `GET /api/health`
+
+#### Scenario: .env.example contains placeholder values
+- **WHEN** `.env.example` is read
+- **THEN** it SHALL document recognized environment variables using placeholder values only
+
+#### Scenario: Documentation states deferred testing
+- **WHEN** `README.md` is read
+- **THEN** it SHALL state that full automated testing is deferred to a later Testing / Final Verification Change
+
+---
+
+### Requirement: Manual foundation verification
+The system SHALL support manual Foundation verification after the user manually installs dependencies.
+
+#### Scenario: Manual run succeeds
+- **WHEN** the user manually installs dependencies and runs `python run.py`
+- **THEN** the Flask Foundation SHALL start successfully
+
+#### Scenario: Manual health check succeeds
+- **WHEN** the user sends `GET http://127.0.0.1:5001/api/health`
+- **THEN** the response SHALL return status 200 and the unified JSON response structure
+
+#### Scenario: Formatting check passes
+- **WHEN** `git diff --check` is run
+- **THEN** it SHALL report no formatting errors
