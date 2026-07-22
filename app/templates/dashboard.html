@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}首页 | 学生管理系统 V2{% endblock %}
+{% block body_class %}dashboard-page{% endblock %}
+
+{% block body %}
+<main class="page-shell" data-dashboard-page>
+  <section class="page-hero">
+    <div>
+      <p class="eyebrow">Student Management System V2</p>
+      <h1>仪表盘</h1>
+      <p class="lede">查看当前学生总数、系统运行状态，并快速进入学生管理页面。</p>
+    </div>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="panel stat-card" data-stats-card>
+      <div class="panel-header">
+        <div>
+          <h2>学生总数</h2>
+          <p>通过统计接口读取当前 SQLite 数据。</p>
+        </div>
+      </div>
+      <div class="card-loading" data-stats-loading>加载中...</div>
+      <div class="card-value" data-stats-value hidden></div>
+      <div class="card-error" data-stats-error hidden>暂时无法获取</div>
+    </article>
+
+    <article class="panel stat-card" data-health-card>
+      <div class="panel-header">
+        <div>
+          <h2>系统状态</h2>
+          <p>基于健康检查接口显示当前运行情况。</p>
+        </div>
+      </div>
+      <div class="card-loading" data-health-loading>加载中...</div>
+      <div class="card-value card-status" data-health-value hidden></div>
+      <div class="card-error" data-health-error hidden>暂时无法获取</div>
+    </article>
+  </section>
+
+  <section class="panel quick-panel">
+    <div class="panel-header">
+      <div>
+        <h2>快捷入口</h2>
+        <p>继续查看、搜索、新增、编辑或删除学生记录。</p>
+      </div>
+    </div>
+    <div class="action-row">
+      <a class="button-link" href="{{ url_for('pages.students_page') }}">打开学生管理页面</a>
+    </div>
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

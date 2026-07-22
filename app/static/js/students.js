@@ -1,8 +1,18 @@
 const state = {
   students: [],
+  currentPage: 1,
+  pageSize: 15,
+  keyword: "",
+  sortBy: "student_number",
+  sortOrder: "asc",
+  selectedIds: new Set(),
+  total: 0,
+  totalPages: 0,
+  loading: false,
   modalMode: "create",
-  selectedStudentId: null,
-  isSubmitting: false,
+  editingStudentId: null,
+  submitting: false,
+  batchDeleting: false,
 };
 
 const text = {
@@ -11,7 +21,11 @@ const text = {
   createFailed: "新增学生失败",
   updateFailed: "更新学生失败",
   deleteFailed: "删除学生失败",
+  batchDeleteFailed: "批量删除失败",
   deleteConfirm: "确认删除这条学生记录吗？",
+  batchDeleteConfirm(count) {
+    return `确认删除已选中的 ${count} 条学生记录吗？`;
+  },
   empty: "未填写",
   createTitle: "新增学生",
   editTitle: "编辑学生",
@@ -24,6 +38,28 @@ const text = {
   createSubmitting: "提交中...",
   editSubmitting: "保存中...",
   editMissing: "请先选择需要编辑的学生记录。",
+  totalSummary(total) {
+    return `共 ${total} 条匹配记录`;
+  },
+  pageSummary(page, totalPages) {
+    return `第 ${page} / ${Math.max(totalPages, 1)} 页`;
+  },
+  sortLabel(label, active, direction) {
+    if (!active) {
+      return label;
+    }
+    return `${label} ${direction === "asc" ? "↑" : "↓"}`;
+  },
+};
+
+const sortLabels = {
+  student_number: "学号",
+  name: "姓名",
+  gender: "性别",
+  age: "年龄",
+  major: "专业",
+  year_level: "年级",
+  score: "成绩",
 };
 
 const page = document.querySelector("[data-students-page]");
@@ -36,9 +72,17 @@ if (page) {
     loadingState: page.querySelector("[data-loading-state]"),
     errorState: page.querySelector("[data-error-state]"),
     searchForm: page.querySelector("[data-search-form]"),
+    keywordInput: page.querySelector("#keyword"),
     openCreateButton: page.querySelector("[data-open-create-modal]"),
+    batchDeleteButton: page.querySelector("[data-batch-delete-button]"),
+    totalSummary: page.querySelector("[data-total-summary]"),
+    pageSummary: page.querySelector("[data-page-summary]"),
+    paginationText: page.querySelector("[data-pagination-text]"),
+    prevPageButton: page.querySelector("[data-prev-page]"),
+    nextPageButton: page.querySelector("[data-next-page]"),
+    selectAllCheckbox: page.querySelector("[data-select-all-checkbox]"),
+    sortButtons: [...page.querySelectorAll("[data-sort-field]")],
     modalBackdrop: page.querySelector("[data-modal-backdrop]"),
-    modalPanel: page.querySelector("[data-student-modal]"),
     modalTitle: page.querySelector("[data-modal-title]"),
     modalEyebrow: page.querySelector("[data-modal-eyebrow]"),
     modalDescription: page.querySelector("[data-modal-description]"),
@@ -61,55 +105,111 @@ if (page) {
     "email",
   ];
 
-  initialize();
+  void initialize();
 
-  function initialize() {
-    enforceClosedModalState();
+  async function initialize() {
+    try {
+      enforceClosedModalState();
+      bindEvents();
+      syncModalUi();
+      syncSortButtons();
+      syncSelectionUi();
+      syncPaginationUi();
+      await loadStudents();
+    } catch (error) {
+      console.error(error);
+      setError(text.loadFailed);
+    }
+  }
+
+  function bindEvents() {
     elements.searchForm.addEventListener("submit", handleSearchSubmit);
     elements.openCreateButton.addEventListener("click", openCreateModal);
+    elements.batchDeleteButton.addEventListener("click", handleBatchDelete);
+    elements.prevPageButton.addEventListener("click", () => changePage(state.currentPage - 1));
+    elements.nextPageButton.addEventListener("click", () => changePage(state.currentPage + 1));
+    elements.selectAllCheckbox.addEventListener("change", handleToggleSelectAll);
     elements.modalForm.addEventListener("submit", handleModalSubmit);
     elements.closeButton.addEventListener("click", closeModal);
     elements.cancelButton.addEventListener("click", closeModal);
     elements.modalBackdrop.addEventListener("click", handleBackdropClick);
     elements.tableBody.addEventListener("click", handleTableClick);
+    elements.tableBody.addEventListener("change", handleTableChange);
     document.addEventListener("keydown", handleDocumentKeydown);
-    syncModalUi();
-    loadStudents();
+    for (const button of elements.sortButtons) {
+      button.addEventListener("click", handleSortClick);
+    }
   }
 
   async function loadStudents() {
+    state.loading = true;
     setLoading(true);
     setError("");
+    syncPaginationUi();
+
     try {
-      const keyword = new FormData(elements.searchForm).get("keyword")?.toString().trim();
-      const searchParams = new URLSearchParams();
-      if (keyword) {
-        searchParams.set("keyword", keyword);
+      const searchParams = new URLSearchParams({
+        page: String(state.currentPage),
+        page_size: String(state.pageSize),
+        sort_by: state.sortBy,
+        sort_order: state.sortOrder,
+      });
+
+      if (state.keyword) {
+        searchParams.set("keyword", state.keyword);
       }
-      const endpoint = searchParams.size ? `/api/students?${searchParams}` : "/api/students";
-      const response = await fetch(endpoint);
+
+      const response = await fetch(`/api/students?${searchParams.toString()}`);
       const payload = await response.json();
       if (!response.ok || !payload.success) {
         throw new Error(payload.message || text.loadFailed);
       }
+
+      const meta = payload.meta ?? {};
+      const totalPages = Number(meta.total_pages ?? 0);
+      const targetPage = Math.max(totalPages, 1);
+
+      if (state.currentPage > totalPages && state.currentPage !== targetPage) {
+        state.currentPage = targetPage;
+        await loadStudents();
+        return;
+      }
+
       state.students = Array.isArray(payload.data) ? payload.data : [];
+      state.total = Number(meta.total ?? 0);
+      state.totalPages = totalPages;
+      state.currentPage = Number(meta.page ?? state.currentPage);
+      state.pageSize = Number(meta.page_size ?? state.pageSize);
+      state.sortBy = meta.sort_by ?? state.sortBy;
+      state.sortOrder = meta.sort_order ?? state.sortOrder;
       renderStudents();
+      syncSummaries();
+      syncSortButtons();
+      syncPaginationUi();
+      syncSelectionUi();
     } catch (error) {
       state.students = [];
+      state.total = 0;
+      state.totalPages = 0;
       renderStudents();
-      setError(error.message || text.loadFailed);
+      syncSummaries();
+      syncPaginationUi();
+      syncSelectionUi();
+      setError(error instanceof Error ? error.message : text.loadFailed);
     } finally {
+      state.loading = false;
       setLoading(false);
+      syncPaginationUi();
     }
   }
 
   async function handleModalSubmit(event) {
     event.preventDefault();
-    if (state.isSubmitting) {
+    if (state.submitting) {
       return;
     }
 
-    if (state.modalMode === "edit" && !state.selectedStudentId) {
+    if (state.modalMode === "edit" && !state.editingStudentId) {
       setModalError(text.editMissing);
       return;
     }
@@ -120,16 +220,14 @@ if (page) {
     try {
       const payload = formToPayload(elements.modalForm);
       const isCreateMode = state.modalMode === "create";
-      const response = await fetch(
-        isCreateMode ? "/api/students" : `/api/students/${state.selectedStudentId}`,
-        {
-          method: isCreateMode ? "POST" : "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
+      const endpoint = isCreateMode ? "/api/students" : `/api/students/${state.editingStudentId}`;
+      const response = await fetch(endpoint, {
+        method: isCreateMode ? "POST" : "PUT",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify(payload),
+      });
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.message || (isCreateMode ? text.createFailed : text.updateFailed));
@@ -139,18 +237,98 @@ if (page) {
       await loadStudents();
     } catch (error) {
       setModalError(
-        error.message || (state.modalMode === "create" ? text.createFailed : text.updateFailed),
+        error instanceof Error
+          ? error.message
+          : state.modalMode === "create"
+            ? text.createFailed
+            : text.updateFailed,
       );
     } finally {
-      if (state.isSubmitting) {
+      if (state.submitting) {
         setSubmitting(false);
       }
     }
   }
 
+  async function handleBatchDelete() {
+    if (!state.selectedIds.size || state.batchDeleting) {
+      return;
+    }
+
+    const confirmed = window.confirm(text.batchDeleteConfirm(state.selectedIds.size));
+    if (!confirmed) {
+      return;
+    }
+
+    state.batchDeleting = true;
+    syncSelectionUi();
+    setError("");
+
+    try {
+      const response = await fetch("/api/students/batch-delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          student_ids: [...state.selectedIds],
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || text.batchDeleteFailed);
+      }
+      clearSelection();
+      await loadStudents();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : text.batchDeleteFailed);
+    } finally {
+      state.batchDeleting = false;
+      syncSelectionUi();
+    }
+  }
+
   function handleSearchSubmit(event) {
     event.preventDefault();
-    loadStudents();
+    state.keyword = elements.keywordInput.value.trim();
+    state.currentPage = 1;
+    clearSelection();
+    void loadStudents();
+  }
+
+  function handleSortClick(event) {
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+
+    const field = button.dataset.sortField;
+    if (!field) {
+      return;
+    }
+
+    if (state.sortBy === field) {
+      state.sortOrder = state.sortOrder === "asc" ? "desc" : "asc";
+    } else {
+      state.sortBy = field;
+      state.sortOrder = "asc";
+    }
+
+    state.currentPage = 1;
+    clearSelection();
+    syncSortButtons();
+    void loadStudents();
+  }
+
+  function handleToggleSelectAll() {
+    const visibleIds = state.students.map((student) => student.id);
+    if (elements.selectAllCheckbox.checked) {
+      state.selectedIds = new Set(visibleIds);
+    } else {
+      state.selectedIds.clear();
+    }
+    syncSelectionUi();
+    renderStudents();
   }
 
   function handleBackdropClick(event) {
@@ -163,6 +341,21 @@ if (page) {
     if (event.key === "Escape" && !elements.modalBackdrop.hidden) {
       closeModal();
     }
+  }
+
+  function handleTableChange(event) {
+    const checkbox = event.target.closest("[data-row-checkbox]");
+    if (!(checkbox instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const studentId = Number(checkbox.dataset.studentId);
+    if (checkbox.checked) {
+      state.selectedIds.add(studentId);
+    } else {
+      state.selectedIds.delete(studentId);
+    }
+    syncSelectionUi();
   }
 
   async function handleTableClick(event) {
@@ -197,9 +390,10 @@ if (page) {
         if (!response.ok || !result.success) {
           throw new Error(result.message || text.deleteFailed);
         }
+        state.selectedIds.delete(studentId);
         await loadStudents();
       } catch (error) {
-        setError(error.message || text.deleteFailed);
+        setError(error instanceof Error ? error.message : text.deleteFailed);
       }
     }
   }
@@ -218,8 +412,17 @@ if (page) {
 
     for (const student of state.students) {
       const row = document.createElement("tr");
+      const isSelected = state.selectedIds.has(student.id);
       row.innerHTML = `
-        <td>${student.id}</td>
+        <td class="checkbox-col">
+          <input
+            type="checkbox"
+            data-row-checkbox
+            data-student-id="${student.id}"
+            aria-label="选择学生 ${escapeHtml(student.name)}"
+            ${isSelected ? "checked" : ""}
+          >
+        </td>
         <td>${escapeHtml(student.student_number)}</td>
         <td>${escapeHtml(student.name)}</td>
         <td>${renderValue(student.gender)}</td>
@@ -231,12 +434,8 @@ if (page) {
         <td>${renderValue(student.email)}</td>
         <td>
           <div class="row-actions">
-            <button type="button" data-action="edit" data-student-id="${student.id}">
-              编辑
-            </button>
-            <button type="button" class="secondary" data-action="delete" data-student-id="${student.id}">
-              删除
-            </button>
+            <button type="button" data-action="edit" data-student-id="${student.id}">编辑</button>
+            <button type="button" class="secondary" data-action="delete" data-student-id="${student.id}">删除</button>
           </div>
         </td>
       `;
@@ -272,11 +471,11 @@ if (page) {
   function openEditModal(student) {
     resetModalState();
     state.modalMode = "edit";
-    state.selectedStudentId = student.id;
+    state.editingStudentId = student.id;
 
     for (const field of studentFields) {
       const input = elements.modalForm.elements.namedItem(field);
-      if (input) {
+      if (input instanceof HTMLInputElement || input instanceof HTMLSelectElement) {
         input.value = student[field] ?? "";
       }
     }
@@ -290,7 +489,7 @@ if (page) {
   }
 
   function closeModal() {
-    if (state.isSubmitting) {
+    if (state.submitting) {
       return;
     }
     enforceClosedModalState();
@@ -305,8 +504,8 @@ if (page) {
 
   function resetModalState() {
     state.modalMode = "create";
-    state.selectedStudentId = null;
-    state.isSubmitting = false;
+    state.editingStudentId = null;
+    state.submitting = false;
     elements.modalForm.reset();
     elements.modalForm.elements.namedItem("id").value = "";
     setModalError("");
@@ -320,22 +519,80 @@ if (page) {
     elements.modalDescription.textContent = isCreateMode
       ? text.createDescription
       : text.editDescription;
-    elements.submitButton.textContent = state.isSubmitting
+    elements.submitButton.textContent = state.submitting
       ? isCreateMode
         ? text.createSubmitting
         : text.editSubmitting
       : isCreateMode
         ? text.createSubmit
         : text.editSubmit;
-    elements.submitButton.disabled = state.isSubmitting;
+    elements.submitButton.disabled = state.submitting;
   }
 
   function setSubmitting(isSubmitting) {
-    state.isSubmitting = isSubmitting;
+    state.submitting = isSubmitting;
     elements.openCreateButton.disabled = isSubmitting;
     elements.closeButton.disabled = isSubmitting;
     elements.cancelButton.disabled = isSubmitting;
     syncModalUi();
+  }
+
+  function syncSummaries() {
+    elements.totalSummary.textContent = text.totalSummary(state.total);
+    const pageText = text.pageSummary(state.currentPage, state.totalPages);
+    elements.pageSummary.textContent = pageText;
+    elements.paginationText.textContent = pageText;
+  }
+
+  function syncPaginationUi() {
+    elements.prevPageButton.disabled = state.loading || state.currentPage <= 1;
+    elements.nextPageButton.disabled =
+      state.loading || state.totalPages === 0 || state.currentPage >= state.totalPages;
+    elements.paginationText.textContent = text.pageSummary(state.currentPage, state.totalPages);
+    elements.pageSummary.textContent = text.pageSummary(state.currentPage, state.totalPages);
+  }
+
+  function syncSortButtons() {
+    for (const button of elements.sortButtons) {
+      const field = button.dataset.sortField;
+      if (!field) {
+        continue;
+      }
+      const active = state.sortBy === field;
+      button.classList.toggle("is-active", active);
+      button.textContent = text.sortLabel(sortLabels[field], active, state.sortOrder);
+    }
+  }
+
+  function syncSelectionUi() {
+    const visibleIds = state.students.map((student) => student.id);
+    const selectedVisibleCount = visibleIds.filter((id) => state.selectedIds.has(id)).length;
+    const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+    const partiallySelected = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+
+    elements.selectAllCheckbox.checked = allVisibleSelected;
+    elements.selectAllCheckbox.indeterminate = partiallySelected;
+    elements.selectAllCheckbox.disabled = !visibleIds.length || state.loading;
+
+    const disableBatchDelete = state.batchDeleting || state.selectedIds.size === 0;
+    elements.batchDeleteButton.disabled = disableBatchDelete;
+    elements.batchDeleteButton.classList.toggle("disabled", disableBatchDelete);
+  }
+
+  function changePage(nextPage) {
+    const maxPage = Math.max(state.totalPages, 1);
+    const clampedPage = Math.min(Math.max(nextPage, 1), maxPage);
+    if (clampedPage === state.currentPage) {
+      return;
+    }
+    state.currentPage = clampedPage;
+    clearSelection();
+    void loadStudents();
+  }
+
+  function clearSelection() {
+    state.selectedIds.clear();
+    syncSelectionUi();
   }
 
   function focusFirstField() {

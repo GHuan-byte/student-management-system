@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}学生管理{% endblock %}
+{% block title %}学生管理 | 学生管理系统 V2{% endblock %}
+{% block body_class %}students-page{% endblock %}
 
 {% block body %}
 <main class="page-shell" data-students-page>
-  <section class="hero">
+  <section class="page-hero page-hero-split">
     <div>
       <p class="eyebrow">Student Management System V2</p>
       <h1>学生管理</h1>
       <p class="lede">
-        使用 REST API 维护学生列表，支持搜索、新增、编辑和删除。
+        使用 REST API 维护学生列表，支持搜索、排序、分页、新增、编辑、单条删除和批量删除。
       </p>
     </div>
     <form class="search-card" data-search-form>
@@ -21,47 +22,63 @@
     </form>
   </section>
 
+  <section class="toolbar panel">
+    <div class="toolbar-group">
+      <button type="button" data-open-create-modal>新增学生</button>
+      <button type="button" class="secondary disabled" data-batch-delete-button disabled>批量删除</button>
+    </div>
+    <div class="toolbar-meta">
+      <span data-total-summary>共 0 条匹配记录</span>
+      <span data-page-summary>第 1 / 1 页</span>
+    </div>
+  </section>
+
   <section class="status-strip">
     <div class="status-pill" data-loading-state hidden>加载中...</div>
     <div class="status-pill error" data-error-state hidden></div>
   </section>
 
-  <section class="content-grid">
-    <section class="panel panel-wide">
-      <div class="panel-header">
-        <div>
-          <h2>学生列表</h2>
-          <p>支持关键字搜索，不包含分页或排序。</p>
-        </div>
-        <button type="button" data-open-create-modal>新增学生</button>
+  <section class="panel panel-wide">
+    <div class="panel-header">
+      <div>
+        <h2>学生列表</h2>
+        <p>当前页面固定每页显示 15 条记录，并支持安全排序与当前页选择。</p>
       </div>
+    </div>
 
-      <div class="empty-state" data-empty-state hidden>
-        <h3>暂无学生数据</h3>
-        <p>可以点击“新增学生”来创建第一条记录。</p>
-      </div>
+    <div class="empty-state" data-empty-state hidden>
+      <h3>暂无学生数据</h3>
+      <p>可以点击“新增学生”创建记录，或调整搜索条件后重试。</p>
+    </div>
 
-      <div class="table-wrap" data-table-wrap hidden>
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>学号</th>
-              <th>姓名</th>
-              <th>性别</th>
-              <th>年龄</th>
-              <th>专业</th>
-              <th>年级</th>
-              <th>成绩</th>
-              <th>电话</th>
-              <th>邮箱</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody data-students-body></tbody>
-        </table>
-      </div>
-    </section>
+    <div class="table-wrap" data-table-wrap hidden>
+      <table>
+        <thead>
+          <tr>
+            <th class="checkbox-col">
+              <input type="checkbox" data-select-all-checkbox aria-label="选择当前页全部学生">
+            </th>
+            <th><button type="button" class="sort-button" data-sort-field="student_number">学号</button></th>
+            <th><button type="button" class="sort-button" data-sort-field="name">姓名</button></th>
+            <th><button type="button" class="sort-button" data-sort-field="gender">性别</button></th>
+            <th><button type="button" class="sort-button" data-sort-field="age">年龄</button></th>
+            <th><button type="button" class="sort-button" data-sort-field="major">专业</button></th>
+            <th><button type="button" class="sort-button" data-sort-field="year_level">年级</button></th>
+            <th><button type="button" class="sort-button" data-sort-field="score">成绩</button></th>
+            <th>电话</th>
+            <th>邮箱</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody data-students-body></tbody>
+      </table>
+    </div>
+
+    <div class="pagination-bar">
+      <button type="button" class="secondary" data-prev-page>上一页</button>
+      <span data-pagination-text>第 1 / 1 页</span>
+      <button type="button" class="secondary" data-next-page>下一页</button>
+    </div>
   </section>
 
   <div class="modal-backdrop" data-modal-backdrop hidden>

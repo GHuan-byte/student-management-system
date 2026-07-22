@@ -3,11 +3,46 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Student Management System V2{% endblock %}</title>
+    <title>{% block title %}学生管理系统 V2{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   </head>
-  <body>
-    {% block body %}{% endblock %}
+  <body class="{% block body_class %}{% endblock %}">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <span class="brand-mark">SMS</span>
+        <div class="brand-copy">
+          <strong>学生管理系统 V2</strong>
+          <small>Dashboard & Student Workspace</small>
+        </div>
+      </div>
+    </header>
+
+    <div class="app-layout">
+      <aside class="sidebar" aria-label="主导航">
+        <div class="sidebar-title">系统导航</div>
+        <nav class="sidebar-nav">
+          <a
+            href="{{ url_for('pages.dashboard_page') }}"
+            class="sidebar-link {% if active_page == 'dashboard' %}is-active{% endif %}"
+          >
+            <span class="sidebar-link-mark"></span>
+            首页概览
+          </a>
+          <a
+            href="{{ url_for('pages.students_page') }}"
+            class="sidebar-link {% if active_page == 'students' %}is-active{% endif %}"
+          >
+            <span class="sidebar-link-mark"></span>
+            学生管理
+          </a>
+        </nav>
+      </aside>
+
+      <div class="content-area">
+        {% block body %}{% endblock %}
+      </div>
+    </div>
+
     {% block scripts %}{% endblock %}
   </body>
 </html>

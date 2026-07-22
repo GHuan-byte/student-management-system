@@ -7,7 +7,7 @@ from typing import Any
 from flask import Blueprint, current_app, request
 
 from app.services.student_service import StudentService
-from app.utils.response import api_success
+from app.utils.response import api_paginated, api_success
 
 students_bp = Blueprint("students", __name__)
 
@@ -26,9 +26,37 @@ def get_json_payload() -> dict[str, Any] | Any:
 @students_bp.get("/api/students")
 def list_students():
     service = get_student_service()
-    keyword = request.args.get("keyword")
-    students = service.list_students(keyword=keyword)
-    return api_success(data=students)
+    result = service.list_students(
+        keyword=request.args.get("keyword"),
+        page=request.args.get("page"),
+        page_size=request.args.get("page_size"),
+        sort_by=request.args.get("sort_by"),
+        sort_order=request.args.get("sort_order"),
+    )
+    return api_paginated(
+        data=result["items"],
+        total=result["total"],
+        page=result["page"],
+        page_size=result["page_size"],
+        extra_meta={
+            "sort_by": result["sort_by"],
+            "sort_order": result["sort_order"],
+        },
+    )
+
+
+@students_bp.get("/api/students/stats")
+def get_student_stats():
+    service = get_student_service()
+    stats = service.count_students()
+    return api_success(data=stats)
+
+
+@students_bp.post("/api/students/batch-delete")
+def batch_delete_students():
+    service = get_student_service()
+    result = service.batch_delete_students(get_json_payload())
+    return api_success(data=result, message="Students deleted successfully")
 
 
 @students_bp.get("/api/students/<int:student_id>")

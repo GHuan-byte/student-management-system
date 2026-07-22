@@ -40,32 +40,44 @@ Automated tests remain out of scope for this change.
 
 ## Decisions
 
-### D1: Serve a true Dashboard at `/` and move shared navigation into `base.html`
+### D1: Serve a true Dashboard at `/` and move the shared application shell into `base.html`
 
 `GET /` will render a dedicated `dashboard.html` template through
 `app/routes/pages.py`. `base.html` will become the shared shell for both
-Dashboard and student-management pages, including:
+Dashboard and student-management pages. The shared shell owns the stable
+administration layout:
 
-- the common header
+- a top bar
+- a left-side primary navigation region
+- a right-side content region for each page body
 - navigation links for `首页` and `学生管理`
 - an active-page state supplied by the page route
-- shared spacing, card, button, and message styles
+- shared spacing, card, button, form, table, modal, and message styles
 
-This keeps page ownership server-rendered while giving both screens a unified
-navigation model.
+Dashboard and student-management pages must not maintain separate, conflicting
+page skeletons. The main page-switching affordance is the shared navigation,
+not duplicate per-page header buttons.
+
+This keeps page ownership server-rendered while giving both screens one unified
+application shell.
 
 Alternative considered:
 - Redirect `/` to `/students`
   - Rejected because the approved behavior explicitly requires a real Dashboard
     page at the root path.
 
-### D2: Load Dashboard cards from the existing APIs plus a new stats endpoint
+### D2: Keep Dashboard content focused while avoiding duplicate navigation actions
 
 The Dashboard will render server-side HTML immediately, then use
 `app/static/js/dashboard.js` to load live data for:
 
 - student total count from `GET /api/students/stats`
 - health/status from the existing `GET /api/health`
+
+The Dashboard may keep one in-content quick link to `/students`, but it must
+not also repeat equivalent student-management entry buttons in the top-right
+header area. Navigation should remain clear, non-duplicative, and consistent
+with the shared shell.
 
 This keeps the page responsive on first render while ensuring the displayed
 count reflects the current SQLite data through the approved route -> service ->
@@ -152,7 +164,7 @@ Alternative considered:
   - Rejected because the approved behavior explicitly disallows repeated browser
     delete requests for batch removal.
 
-### D6: Preserve the existing create/edit modal and add selection controls around it
+### D6: Preserve the reusable create/edit modal inside the new shared shell
 
 The current student page already uses a reusable create/edit modal. This change
 will preserve that workflow and add:
@@ -166,6 +178,37 @@ will preserve that workflow and add:
 Selection behavior must not interfere with opening the edit modal. Clicking
 `编辑` continues to open the existing reusable modal. Single delete behavior
 remains intact.
+
+The modal must continue to:
+
+- remain hidden by default
+- render above the shared layout with a backdrop
+- avoid being clipped or obscured by the top bar, sidebar, or content region
+- remain interactive while open
+- restore page scrolling after close
+
+This change updates layout, styling, and visible copy only. It does not alter
+the REST API contract, pagination rules, sorting rules, selection rules,
+batch-delete rules, or the create/edit modal's business behavior.
+
+### D7: Centralize visual language in one stylesheet and keep it resilient
+
+`app/static/css/style.css` remains the centralized styling entry point for:
+
+- the shared application shell
+- Dashboard cards and status sections
+- student-page search, toolbar, table, pagination, and status areas
+- the reusable modal
+- responsive layout adjustments
+
+Templates should not introduce large inline CSS blocks, and the stylesheet
+should avoid letting one page define a second conflicting style system for the
+same UI primitives. The layout must remain stable at common desktop widths and
+must degrade responsively on narrower screens without major horizontal overflow,
+navigation overlap, or hidden elements becoming visible unexpectedly.
+
+User-visible Chinese text must remain readable and must not contain mojibake,
+replacement glyphs, or placeholder corruption.
 
 Alternative considered:
 - Replace the existing modal workflow again
@@ -185,13 +228,19 @@ Alternative considered:
 - Shared styling work could accidentally regress the existing modal workflow ->
   Keep the create/edit modal contract unchanged and verify it explicitly during
   manual acceptance
+- A new shared shell can introduce layout collisions between navigation,
+  content, and overlays -> keep layout ownership centralized in `base.html` and
+  keep modal layering independent from the sidebar and top bar
+- Text and encoding regressions can make the UI look broken even when behavior
+  is correct -> keep user-visible Chinese copy readable and verify that no
+  visible mojibake remains
 
 ## Migration Plan
 
 - No database schema migration is required for this change
 - Apply the repository and service enhancements before updating the REST API
-- Add the Dashboard route and shared layout before wiring the page-level
-  JavaScript enhancements
+- Add the Dashboard route and shared application shell before wiring the
+  page-level JavaScript enhancements
 - Update the student page after the API contract is in place
 - Refresh README manual verification steps to match the enhanced UI
 

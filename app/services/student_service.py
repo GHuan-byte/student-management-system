@@ -19,6 +19,12 @@ YEAR_LEVEL_VALUES = {
 class StudentService:
     """Business logic for student CRUD."""
 
+    default_page = 1
+    default_page_size = 15
+    max_page_size = 50
+    max_batch_delete_ids = 50
+    default_sort_by = "student_number"
+    default_sort_order = "asc"
     required_create_fields = {"student_number", "name"}
     allowed_fields = {
         "student_number",
@@ -53,11 +59,31 @@ class StudentService:
     def __init__(self, repository: StudentRepository) -> None:
         self.repository = repository
 
-    def list_students(self, keyword: str | None = None) -> list[dict[str, Any]]:
+    def list_students(
+        self,
+        *,
+        keyword: str | None = None,
+        page: Any = None,
+        page_size: Any = None,
+        sort_by: str | None = None,
+        sort_order: str | None = None,
+    ) -> dict[str, Any]:
         normalized_keyword = (keyword or "").strip()
-        if not normalized_keyword:
-            return self.repository.list_students()
-        return self.repository.search_students(normalized_keyword)
+        resolved_page = self._normalize_page(page)
+        resolved_page_size = self._normalize_page_size(page_size)
+        resolved_sort_by = self._normalize_sort_by(sort_by)
+        resolved_sort_order = self._normalize_sort_order(sort_order)
+        return self.repository.list_students(
+            keyword=normalized_keyword,
+            page=resolved_page,
+            page_size=resolved_page_size,
+            sort_by=resolved_sort_by,
+            sort_order=resolved_sort_order,
+        )
+
+    def count_students(self, *, keyword: str | None = None) -> dict[str, int]:
+        normalized_keyword = (keyword or "").strip()
+        return {"total_students": self.repository.count_students(keyword=normalized_keyword)}
 
     def get_student_by_id(self, student_id: int) -> dict[str, Any]:
         student = self.repository.get_student_by_id(student_id)
@@ -88,6 +114,36 @@ class StudentService:
         if student is None:
             raise NotFoundError("Student not found")
         return student
+
+    def batch_delete_students(self, payload: Any) -> dict[str, int]:
+        if not isinstance(payload, dict):
+            raise ValidationError("Request body must be a JSON object")
+
+        student_ids = payload.get("student_ids")
+        if not isinstance(student_ids, list) or not student_ids:
+            raise ValidationError("student_ids must be a non-empty array")
+
+        normalized_ids: list[int] = []
+        seen: set[int] = set()
+
+        for raw_id in student_ids:
+            if isinstance(raw_id, bool) or not isinstance(raw_id, int) or raw_id <= 0:
+                raise ValidationError("student_ids must contain positive integers only")
+            if raw_id not in seen:
+                seen.add(raw_id)
+                normalized_ids.append(raw_id)
+
+        if len(normalized_ids) > self.max_batch_delete_ids:
+            raise ValidationError(
+                "student_ids must contain no more than 50 unique IDs",
+                details={"max_unique_ids": self.max_batch_delete_ids},
+            )
+
+        deleted_count = self.repository.batch_delete_students(normalized_ids)
+        return {
+            "requested_count": len(normalized_ids),
+            "deleted_count": deleted_count,
+        }
 
     def _normalize_payload(self, payload: Any, *, partial: bool) -> dict[str, Any]:
         if not isinstance(payload, dict):
@@ -123,6 +179,53 @@ class StudentService:
         if partial and not normalized:
             raise ValidationError("Update payload must include at least one editable field")
 
+        return normalized
+
+    def _normalize_page(self, value: Any) -> int:
+        if value in (None, ""):
+            return self.default_page
+        if isinstance(value, bool):
+            raise ValidationError("page must be an integer")
+        try:
+            page = int(value)
+        except (TypeError, ValueError) as error:
+            raise ValidationError("page must be an integer") from error
+        if page < 1:
+            raise ValidationError("page must be greater than or equal to 1")
+        return page
+
+    def _normalize_page_size(self, value: Any) -> int:
+        if value in (None, ""):
+            return self.default_page_size
+        if isinstance(value, bool):
+            raise ValidationError("page_size must be an integer")
+        try:
+            page_size = int(value)
+        except (TypeError, ValueError) as error:
+            raise ValidationError("page_size must be an integer") from error
+        if page_size < 1 or page_size > self.max_page_size:
+            raise ValidationError("page_size must be between 1 and 50")
+        return page_size
+
+    def _normalize_sort_by(self, value: str | None) -> str:
+        if value in (None, ""):
+            return self.default_sort_by
+        if value not in self.repository.sortable_fields:
+            raise ValidationError(
+                "sort_by must be one of the approved fields",
+                details={"allowed_sort_fields": sorted(self.repository.sortable_fields)},
+            )
+        return value
+
+    def _normalize_sort_order(self, value: str | None) -> str:
+        if value in (None, ""):
+            return self.default_sort_order
+        normalized = str(value).lower()
+        if normalized not in {"asc", "desc"}:
+            raise ValidationError(
+                "sort_order must be asc or desc",
+                details={"allowed_sort_orders": ["asc", "desc"]},
+            )
         return normalized
 
     def _normalize_field(self, field: str, value: Any) -> Any:

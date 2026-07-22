@@ -107,7 +107,8 @@ vanilla JavaScript ES modules that consume the REST API.
 - **WHEN** the user confirms batch deletion for one or more selected students
 - **THEN** the browser SHALL send one `POST /api/students/batch-delete`
   request
-- **AND** after success it SHALL refresh the visible list and Dashboard count
+- **AND** after success it SHALL refresh the visible list and the visible
+  matching-record totals on the student page
 - **AND** if the current page becomes empty it SHALL move to the previous valid
   page
 
@@ -131,6 +132,96 @@ vanilla JavaScript ES modules that consume the REST API.
 - **WHEN** the user cancels or closes the create or edit modal
 - **THEN** the modal SHALL close without submitting a mutation request
 - **AND** the user SHALL return to the visible student management page
+
+### Requirement: Shared administration layout
+The system SHALL provide one shared administration layout for the Dashboard and
+student management page.
+
+#### Scenario: Dashboard uses the shared administration layout
+- **WHEN** a browser requests `GET /`
+- **THEN** the rendered page SHALL use the shared administration layout
+- **AND** the page SHALL display a top bar, a left-side navigation region, and
+  a right-side content region
+
+#### Scenario: Student page uses the same shared administration layout
+- **WHEN** a browser requests `GET /students`
+- **THEN** the rendered page SHALL use the same shared administration layout as
+  the Dashboard
+- **AND** the page shell SHALL NOT diverge into a conflicting page-specific
+  outer layout
+
+### Requirement: Primary navigation
+The system SHALL expose one clear primary navigation model for page switching.
+
+#### Scenario: Dashboard navigation active state is visible
+- **WHEN** the user is on the Dashboard
+- **THEN** the `首页` navigation item SHALL display an active state
+
+#### Scenario: Student page navigation active state is visible
+- **WHEN** the user is on the student management page
+- **THEN** the `学生管理` navigation item SHALL display an active state
+
+#### Scenario: Shared navigation routes to the Dashboard
+- **WHEN** the user activates the `首页` navigation item
+- **THEN** the browser SHALL navigate to `/`
+
+#### Scenario: Shared navigation routes to student management
+- **WHEN** the user activates the `学生管理` navigation item
+- **THEN** the browser SHALL navigate to `/students`
+
+### Requirement: No duplicate header actions
+The system SHALL avoid repeating equivalent student-management entry actions in
+the Dashboard header area.
+
+#### Scenario: Dashboard does not render duplicate student-management buttons
+- **WHEN** the Dashboard finishes rendering
+- **THEN** the top-right header area SHALL NOT display two duplicate
+  `学生管理系统` or `学生管理` actions
+- **AND** the primary navigation entry points SHALL remain clear and
+  non-duplicative
+
+### Requirement: Consistent visual styling
+The system SHALL present the Dashboard and student management page with one
+coherent visual language.
+
+#### Scenario: Shared shell uses consistent visual treatment
+- **WHEN** the user switches between `/` and `/students`
+- **THEN** both pages SHALL use consistent navigation, typography, spacing,
+  cards, buttons, form controls, table styling, status messages, and content
+  containers
+
+### Requirement: Responsive layout
+The system SHALL remain usable across common desktop and narrower browser
+widths.
+
+#### Scenario: Navigation does not obscure content on narrower screens
+- **WHEN** the browser width shrinks
+- **THEN** the main content SHALL remain accessible
+- **AND** the navigation SHALL NOT obscure the main content
+- **AND** the page SHALL NOT introduce unnecessary large horizontal overflow
+
+### Requirement: Modal visual isolation
+The system SHALL keep the reusable student modal visually independent from the
+shared shell.
+
+#### Scenario: Closed modal remains hidden
+- **WHEN** the student modal is closed
+- **THEN** the modal and its backdrop SHALL remain hidden
+
+#### Scenario: Open modal appears above the shared layout
+- **WHEN** the student modal is opened
+- **THEN** it SHALL render above the shared layout
+- **AND** it SHALL NOT be obscured by the top bar, sidebar, or content
+  container
+
+### Requirement: Readable Chinese text
+The system SHALL present readable Chinese text in all user-visible copy.
+
+#### Scenario: User-visible text does not contain mojibake
+- **WHEN** any user-visible page text is rendered
+- **THEN** it SHALL use normal readable Chinese where Chinese copy is intended
+- **AND** it SHALL NOT show mojibake, replacement glyphs, broken punctuation,
+  or corrupted placeholder text
 
 ### Requirement: UI feedback states
 The system SHALL provide clear loading, empty, disabled, and error states for
@@ -163,7 +254,8 @@ The system SHALL provide a server-rendered Dashboard at the root route `/`.
 
 #### Scenario: Dashboard shows shared navigation and quick access
 - **WHEN** the Dashboard is rendered
-- **THEN** it SHALL show the shared top navigation
+- **THEN** it SHALL show the shared application shell with the top bar and
+  left-side primary navigation
 - **AND** the `首页` navigation item SHALL be active
 - **AND** it SHALL provide a clear quick link to `/students`
 
@@ -173,6 +265,12 @@ The system SHALL provide a server-rendered Dashboard at the root route `/`.
   `GET /api/students/stats`
 - **AND** it SHALL display a health or status card using the approved
   application health information
+
+#### Scenario: Dashboard stats refresh on page load or refresh
+- **WHEN** the user opens or refreshes the Dashboard
+- **THEN** the page SHALL request the latest count from
+  `GET /api/students/stats`
+- **AND** it SHALL NOT rely on cross-page browser state from `/students`
 
 #### Scenario: Dashboard and student page share visual style
 - **WHEN** the user navigates between `/` and `/students`
@@ -196,3 +294,13 @@ management page.
 - **WHEN** the user is on `/students`
 - **THEN** the page SHALL provide a clear and visible way to return to the
   Dashboard
+
+### Requirement: Preserve existing student interactions
+The system SHALL preserve the approved student-management interaction contract
+while applying layout and styling changes.
+
+#### Scenario: Visual refresh does not change the interaction contract
+- **WHEN** the layout, styling, or visible copy is updated
+- **THEN** create, edit, single delete, pagination, sorting, current-page
+  selection, and batch delete SHALL continue to use the approved API and
+  browser interaction contract

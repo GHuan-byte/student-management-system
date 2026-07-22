@@ -52,6 +52,7 @@ def api_paginated(
     page_size: int,
     message: str = "",
     status_code: int = 200,
+    extra_meta: dict[str, Any] | None = None,
 ):
     """Return a unified paginated success response."""
     if page_size <= 0:
@@ -64,4 +65,8 @@ def api_paginated(
         "total": total,
         "total_pages": total_pages,
     }
+    if extra_meta:
+        for key, value in extra_meta.items():
+            if key not in meta:
+                meta[key] = value
     return api_success(data=data, message=message, meta=meta, status_code=status_code)
