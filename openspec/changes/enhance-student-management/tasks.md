@@ -119,27 +119,27 @@ Execution guardrails:
 
 ### User Acceptance
 
-- [ ] 9.8 [USER] Open `http://127.0.0.1:5001/` and confirm it renders an HTML Dashboard instead of a JSON 404 or redirect-only flow
-- [ ] 9.9 [USER] Open `/` and confirm the page uses a top bar, left-side navigation, and right-side content layout
-- [ ] 9.10 [USER] Confirm the Dashboard shows the current student count and system status
-- [ ] 9.11 [USER] Confirm the Dashboard header area no longer shows two duplicate student-management buttons
-- [ ] 9.12 [USER] Confirm the `首页` and `学生管理` navigation entries both route correctly
-- [ ] 9.13 [USER] Confirm the current page's navigation item shows a clear active state
-- [ ] 9.14 [USER] Confirm the Dashboard and `/students` share the same navigation and overall visual styling
-- [ ] 9.15 [USER] Open `http://127.0.0.1:5001/students` and confirm the default page shows no more than 15 students
-- [ ] 9.16 [USER] Confirm next-page and previous-page navigation work
-- [ ] 9.17 [USER] Confirm keyword search updates both the visible list and total matching-record count
-- [ ] 9.18 [USER] Confirm each approved sort field supports ascending and descending order
-- [ ] 9.19 [USER] Confirm an unsupported sort field returns HTTP 400 with the unified error format
-- [ ] 9.20 [USER] Confirm current-page select-all only affects the visible rows
-- [ ] 9.21 [USER] Confirm partial row selection shows the header checkbox indeterminate state
-- [ ] 9.22 [USER] Confirm selection resets after page, search, or sort changes
-- [ ] 9.23 [USER] Confirm batch delete removes the selected records through one browser action and refreshes the visible list
-- [ ] 9.24 [USER] Confirm the student page totals refresh after batch deletion
-- [ ] 9.25 [USER] Confirm the Dashboard reloads the latest student count when the Dashboard page is reopened or refreshed
-- [ ] 9.26 [USER] Confirm deleting the last records on a page moves the UI to the previous valid page
-- [ ] 9.27 [USER] Confirm create, edit, modal close/cancel behavior, and single delete still work
-- [ ] 9.28 [USER] Confirm the reusable student modal is hidden by default and opens and closes correctly
-- [ ] 9.29 [USER] Confirm the pages do not show obvious layout collisions, overlap, or large horizontal overflow
-- [ ] 9.30 [USER] Confirm user-visible Chinese text does not contain mojibake or unreadable characters
-- [ ] 9.31 [USER] Narrow the browser width and confirm navigation does not obscure the main content
+- [x] 9.8 [USER] Open `http://127.0.0.1:5001/` and confirm it renders an HTML Dashboard instead of a JSON 404 or redirect-only flow
+- [x] 9.9 [USER] Open `/` and confirm the page uses a top bar, left-side navigation, and right-side content layout
+- [x] 9.10 [USER] Confirm the Dashboard shows the current student count and system status
+- [x] 9.11 [USER] Confirm the Dashboard header area no longer shows two duplicate student-management buttons
+- [x] 9.12 [USER] Confirm the `首页` and `学生管理` navigation entries both route correctly
+- [x] 9.13 [USER] Confirm the current page's navigation item shows a clear active state
+- [x] 9.14 [USER] Confirm the Dashboard and `/students` share the same navigation and overall visual styling
+- [x] 9.15 [USER] Open `http://127.0.0.1:5001/students` and confirm the default page shows no more than 15 students
+- [x] 9.16 [USER] Confirm next-page and previous-page navigation work
+- [x] 9.17 [USER] Confirm keyword search updates both the visible list and total matching-record count
+- [x] 9.18 [USER] Confirm each approved sort field supports ascending and descending order
+- [x] 9.19 [USER] Confirm an unsupported sort field returns HTTP 400 with the unified error format
+- [x] 9.20 [USER] Confirm current-page select-all only affects the visible rows
+- [x] 9.21 [USER] Confirm partial row selection shows the header checkbox indeterminate state
+- [x] 9.22 [USER] Confirm selection resets after page, search, or sort changes
+- [x] 9.23 [USER] Confirm batch delete removes the selected records through one browser action and refreshes the visible list
+- [x] 9.24 [USER] Confirm the student page totals refresh after batch deletion
+- [x] 9.25 [USER] Confirm the Dashboard reloads the latest student count when the Dashboard page is reopened or refreshed
+- [x] 9.26 [USER] Confirm deleting the last records on a page moves the UI to the previous valid page
+- [x] 9.27 [USER] Confirm create, edit, modal close/cancel behavior, and single delete still work
+- [x] 9.28 [USER] Confirm the reusable student modal is hidden by default and opens and closes correctly
+- [x] 9.29 [USER] Confirm the pages do not show obvious layout collisions, overlap, or large horizontal overflow
+- [x] 9.30 [USER] Confirm user-visible Chinese text does not contain mojibake or unreadable characters
+- [x] 9.31 [USER] Narrow the browser width and confirm navigation does not obscure the main content
