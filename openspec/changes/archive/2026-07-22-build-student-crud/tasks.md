@@ -38,12 +38,13 @@
 
 - [x] 5.1 Create `app/routes/pages.py`, `app/templates/base.html`, `app/templates/students.html`, `app/static/css/style.css`, and `app/static/js/students.js`.
 - [x] 5.2 Render a student management page at `GET /students` with Chinese UI labels, English field names in code, and visible loading, empty, and error states.
-- [x] 5.3 Use the fields `student_number`, `name`, `gender`, `age`, `major`, `year_level`, `score`, `phone`, and `email` in the table, create modal, and edit modal, showing `year_level` as “年级” and `score` as “成绩”.
+- [x] 5.3 Use the fields `student_number`, `name`, `gender`, `age`, `major`, `year_level`, `score`, `phone`, and `email` in the table and the reusable create/edit modal, showing `year_level` as “年级” and `score` as “成绩”.
 - [x] 5.4 Implement browser-side list, keyword search, add, edit, and delete behavior through a vanilla JavaScript ES module that calls the REST API.
-- [x] 5.5 Use page-level trigger buttons to open the create modal and edit modal instead of permanently expanded inline create and edit forms.
-- [x] 5.6 Prefill the edit modal with the current student data, close the create or edit modal after a successful submission, refresh the visible list after success, and support explicit cancel or close behavior for both modals.
-- [x] 5.7 Update `README.md` and `.env.example` with manual database initialization, application startup, and manual CRUD verification instructions, explicitly stating that SQLite is part of Python, no additional package installation is required for this change, `pip` must not be run for this change, and any unexpected dependency discovery must stop and be reported.
-- [x] 5.8 Ensure `*.egg-info/` remains ignored and is not committed.
+- [x] 5.5 Render `GET /students` so the full student page is visible first, with the reusable modal and backdrop hidden by default on initial load and after refresh.
+- [x] 5.6 Use page-level trigger buttons so only `新增学生` opens the reusable modal in create mode and only a row-level `编辑` action opens it in edit mode, instead of permanently expanded inline create and edit forms.
+- [x] 5.7 Prefill edit mode with the current student data, keep the reusable modal closed during page load, refresh, list loading, and empty-state rendering, close it after a successful submission, refresh the visible list after success, and support explicit cancel or close behavior.
+- [x] 5.8 Update `README.md` and `.env.example` with manual database initialization, application startup, and manual CRUD verification instructions, explicitly stating that SQLite is part of Python, no additional package installation is required for this change, `pip` must not be run for this change, and any unexpected dependency discovery must stop and be reported.
+- [x] 5.9 Ensure `*.egg-info/` remains ignored and is not committed.
 
 ## 6. Manual Verification
 
@@ -56,18 +57,19 @@
 
 ### User Acceptance
 
-- [ ] 6.5 [USER] Initialize the SQLite database using the documented manual command.
-- [ ] 6.6 [USER] Start the application with `python run.py`.
-- [ ] 6.7 [USER] Open `/students` and confirm the initial load shows either the current student list or the empty state with Chinese UI labels.
-- [ ] 6.8 [USER] Open the create modal, create a student, and confirm the UI and API preserve leading zeros in `student_number`.
-- [ ] 6.9 [USER] Search for a student by keyword and confirm the displayed list updates from the API response.
-- [ ] 6.10 [USER] Retrieve a student by ID and confirm `GET /api/students/<student_id>` returns HTTP `200` with the unified JSON structure.
-- [ ] 6.11 [USER] Submit a duplicate `student_number` and confirm the API returns HTTP `409` with code `duplicate`.
-- [ ] 6.12 [USER] Submit an invalid `year_level` outside `大一`, `大二`, `大三`, `大四` and confirm the API returns HTTP `400` with code `validation_error`.
-- [ ] 6.13 [USER] Submit a `score` outside `0..100` or a non-integer `score` and confirm the API returns HTTP `400` with code `validation_error`.
-- [ ] 6.14 [USER] Submit an invalid `age` outside `10..100` or a non-integer age and confirm the API returns HTTP `400` with code `validation_error`.
-- [ ] 6.15 [USER] Request, update, or delete a missing student and confirm the API returns HTTP `404` with code `not_found`.
-- [ ] 6.16 [USER] Open the edit modal, edit a student, and confirm validation behaves correctly, `created_at` is retained, and `updated_at` changes after the successful update.
-- [ ] 6.17 [USER] Verify the page shows `year_level` as “年级” and `score` as “成绩” in the table and modal forms.
-- [ ] 6.18 [USER] Verify the create and edit modals can both be cancelled or closed without submitting a mutation request.
-- [ ] 6.19 [USER] Delete a student and confirm the record is removed from the UI and subsequent API results.
+- [x] 6.5 [USER] Initialize the SQLite database using the documented manual command.
+- [x] 6.6 [USER] Start the application with `python run.py`.
+- [x] 6.7 [USER] Open `/students` and confirm the initial load shows either the current student list or the empty state with Chinese UI labels.
+- [x] 6.8 [USER] Open the create modal, create a student, and confirm the UI and API preserve leading zeros in `student_number`.
+- [x] 6.9 [USER] Search for a student by keyword and confirm the displayed list updates from the API response.
+- [x] 6.10 [USER] Retrieve a student by ID and confirm `GET /api/students/<student_id>` returns HTTP `200` with the unified JSON structure.
+- [x] 6.11 [USER] Submit a duplicate `student_number` and confirm the API returns HTTP `409` with code `duplicate`.
+- [x] 6.12 [USER] Submit an invalid `year_level` outside `大一`, `大二`, `大三`, `大四` and confirm the API returns HTTP `400` with code `validation_error`.
+- [x] 6.13 [USER] Submit a `score` outside `0..100` or a non-integer `score` and confirm the API returns HTTP `400` with code `validation_error`.
+- [x] 6.14 [USER] Submit an invalid `age` outside `10..100` or a non-integer age and confirm the API returns HTTP `400` with code `validation_error`.
+- [x] 6.15 [USER] Request, update, or delete a missing student and confirm the API returns HTTP `404` with code `not_found`.
+- [x] 6.16 [USER] Open the edit modal, edit a student, and confirm validation behaves correctly, `created_at` is retained, and `updated_at` changes after the successful update.
+- [x] 6.17 [USER] Verify the page shows `year_level` as “年级” and `score` as “成绩” in the table and modal forms.
+- [x] 6.18 [USER] Verify the create and edit modals can both be cancelled or closed without submitting a mutation request.
+- [x] 6.19 [USER] Refresh or reopen `/students` and confirm the page starts with the reusable modal closed and the student management page visible.
+- [x] 6.20 [USER] Delete a student and confirm the record is removed from the UI and subsequent API results.

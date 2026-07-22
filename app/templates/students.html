@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}学生管理{% endblock %}
+
+{% block body %}
+<main class="page-shell" data-students-page>
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Student Management System V2</p>
+      <h1>学生管理</h1>
+      <p class="lede">
+        使用 REST API 维护学生列表，支持搜索、新增、编辑和删除。
+      </p>
+    </div>
+    <form class="search-card" data-search-form>
+      <label for="keyword">关键字搜索</label>
+      <div class="search-row">
+        <input id="keyword" name="keyword" type="text" placeholder="学号、姓名、专业、电话或邮箱" />
+        <button type="submit">搜索</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="status-strip">
+    <div class="status-pill" data-loading-state hidden>加载中...</div>
+    <div class="status-pill error" data-error-state hidden></div>
+  </section>
+
+  <section class="content-grid">
+    <section class="panel panel-wide">
+      <div class="panel-header">
+        <div>
+          <h2>学生列表</h2>
+          <p>支持关键字搜索，不包含分页或排序。</p>
+        </div>
+        <button type="button" data-open-create-modal>新增学生</button>
+      </div>
+
+      <div class="empty-state" data-empty-state hidden>
+        <h3>暂无学生数据</h3>
+        <p>可以点击“新增学生”来创建第一条记录。</p>
+      </div>
+
+      <div class="table-wrap" data-table-wrap hidden>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>学号</th>
+              <th>姓名</th>
+              <th>性别</th>
+              <th>年龄</th>
+              <th>专业</th>
+              <th>年级</th>
+              <th>成绩</th>
+              <th>电话</th>
+              <th>邮箱</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody data-students-body></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <div class="modal-backdrop" data-modal-backdrop hidden>
+    <section
+      class="modal-panel"
+      data-student-modal
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="student-modal-title"
+    >
+      <div class="modal-header">
+        <div>
+          <p class="modal-eyebrow" data-modal-eyebrow>新增学生</p>
+          <h2 id="student-modal-title" data-modal-title>新增学生</h2>
+          <p data-modal-description>必填字段：学号和姓名。</p>
+        </div>
+        <button type="button" class="icon-button" data-close-modal aria-label="关闭">&times;</button>
+      </div>
+
+      <div class="modal-error" data-modal-error hidden></div>
+
+      <form class="student-form" data-student-form>
+        <input type="hidden" name="id">
+        {% include "_student_form_fields.html" %}
+        <div class="form-actions">
+          <button type="button" class="secondary" data-cancel-modal>取消</button>
+          <button type="submit" data-submit-button>新增学生</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/students.js') }}"></script>
+{% endblock %}

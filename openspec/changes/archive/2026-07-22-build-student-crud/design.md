@@ -174,13 +174,17 @@ The browser UI will be intentionally simple:
 - `app/templates/base.html` and `app/templates/students.html` will provide the page shell.
 - `app/static/js/students.js` will handle API calls, rendering, search, modal open and close flows, add, edit, delete, loading state, empty state, and error messages.
 - UI labels will be Chinese, while field names and payload keys remain English in code.
+- `GET /students` will initially render the complete student management page, including the toolbar/search area and the student list or empty state.
 - The page will display the student table together with trigger buttons for create and edit actions, rather than permanently expanded create and edit forms in the page layout.
-- The create modal and edit modal will include `student_number`, `name`, `gender`, `age`, `major`, `year_level`, `score`, `phone`, and `email`.
+- The page will use one reusable modal for both create and edit workflows, and that modal will include `student_number`, `name`, `gender`, `age`, `major`, `year_level`, `score`, `phone`, and `email`.
 - The page will label `year_level` as “年级” and `score` as “成绩”.
-- Clicking `新增学生` will open the create modal.
-- Clicking `编辑` for an existing student row will open the edit modal with the current student data prefilled.
+- The modal and backdrop will be hidden by default on initial render and after refresh.
+- The page will not automatically open the modal during initial page load, page refresh, student-list loading, or empty-state rendering.
+- Clicking `新增学生` will switch the reusable modal into create mode and open it.
+- Clicking `编辑` for an existing student row will switch the reusable modal into edit mode, prefill the current student data, and open it.
 - A successful create or edit submission will close the modal and refresh the visible list.
-- Both modals will support cancel and close behavior without mutating data.
+- Closing the modal will return the user to the visible student management page without leaving the modal open in the background.
+- The reusable modal will support cancel and close behavior without mutating data.
 
 Alternative considered:
 - Rendering create and edit forms directly inside the page layout.
