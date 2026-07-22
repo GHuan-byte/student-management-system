@@ -172,29 +172,27 @@ The browser UI will be intentionally simple:
 
 - `app/routes/pages.py` will serve a student management page at `GET /students`.
 - `app/templates/base.html` and `app/templates/students.html` will provide the page shell.
-- `app/static/js/students.js` will handle API calls, rendering, search, add, edit, delete, loading state, empty state, and error messages.
+- `app/static/js/students.js` will handle API calls, rendering, search, modal open and close flows, add, edit, delete, loading state, empty state, and error messages.
 - UI labels will be Chinese, while field names and payload keys remain English in code.
-- The table view plus create and edit forms will include `student_number`, `name`, `gender`, `age`, `major`, `year_level`, `score`, `phone`, and `email`.
+- The page will display the student table together with trigger buttons for create and edit actions, rather than permanently expanded create and edit forms in the page layout.
+- The create modal and edit modal will include `student_number`, `name`, `gender`, `age`, `major`, `year_level`, `score`, `phone`, and `email`.
 - The page will label `year_level` as “年级” and `score` as “成绩”.
+- Clicking `新增学生` will open the create modal.
+- Clicking `编辑` for an existing student row will open the edit modal with the current student data prefilled.
+- A successful create or edit submission will close the modal and refresh the visible list.
+- Both modals will support cancel and close behavior without mutating data.
 
 Alternative considered:
-- Building the first UI entirely with server-side form submissions and redirects.
+- Rendering create and edit forms directly inside the page layout.
 Why rejected:
-- The project needs to exercise the REST API directly from the browser, and the planned ES-module pattern already exists in the architecture guidance.
+- The product direction for this CRUD phase is a list-centered page with focused modal workflows for create and edit, while still exercising the REST API directly from the browser.
 
 ### 8. Keep verification manual and document it clearly
 
-Automated testing is explicitly deferred by this change. Verification will focus on:
+Automated testing is explicitly deferred by this change.
 
-- manual database initialization through `flask --app run.py init-db`
-- manual app startup
-- manual CRUD checks for create, list, search, retrieve by ID, edit, and delete
-- manual checks confirming `year_level` accepts only `大一`, `大二`, `大三`, and `大四`
-- manual error checks for duplicate student numbers, invalid score, invalid age, invalid year_level, and missing students
-- manual timestamp checks confirming `created_at` is retained and `updated_at` changes after edit
-- `git diff --check`
-- `git status`
-- scope review against proposal, design, specs, and tasks
+- Verification remains manual for this CRUD phase.
+- The concrete verification steps and acceptance checklist belong in the change tasks and specs rather than in the design narrative.
 
 Alternative considered:
 - Adding even a minimal pytest smoke suite now.
@@ -211,11 +209,12 @@ Why rejected:
 
 ## Migration Plan
 
-1. Extend configuration, CLI registration, and blueprint registration so the existing Foundation can expose database-backed student features.
-2. Add explicit database initialization support and document the manual `flask --app run.py init-db` command.
-3. Add the updated student schema, repository, and service layers with `year_level` and `score` validation before adding API routes.
-4. Add the student API and the browser UI after the backend layers are in place, using “年级” for `year_level` and “成绩” for `score`.
-5. Verify manually with initialization, startup, list, search, retrieve-by-ID, create, edit, delete, and error-condition flows, including validation for `year_level`, `score`, and timestamp behavior.
+Implementation should proceed in dependency order:
+
+1. Extend Foundation wiring for configuration, CLI registration, and blueprint registration.
+2. Add explicit database initialization and the student schema.
+3. Add repository and service layers before route handlers.
+4. Add the student API and browser UI after the backend layers are in place.
 
 Rollback strategy:
 - Revert the code change and remove the SQLite file created for this feature if needed.
