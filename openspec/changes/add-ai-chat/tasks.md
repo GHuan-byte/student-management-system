@@ -47,9 +47,9 @@
 - [x] 2.3.4 RED: Test tool_calls response parsing
 - [x] 2.3.5 GREEN: Implement tool_calls parsing
 - [x] 2.3.6 RED: Test timeout maps to ai_timeout
-- [ ] 2.3.7 RED: Test 401/403 maps to ai_auth_error
-- [ ] 2.3.8 RED: Test 429 maps to ai_rate_limited
-- [ ] 2.3.9 RED: Test 5xx maps to ai_upstream_error
+- [x] 2.3.7 RED: Test 401/403 maps to ai_auth_error
+- [x] 2.3.8 RED: Test 429 maps to ai_rate_limited
+- [x] 2.3.9 RED: Test 5xx maps to ai_upstream_error
 - [ ] 2.3.10 RED: Test malformed response (missing choices/message) maps to ai_invalid_response
 - [x] 2.3.11 RED: Test other httpx errors map to ai_upstream_error
 - [x] 2.3.12a RED: Error message does not contain API Key, Authorization header, or user message

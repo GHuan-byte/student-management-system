@@ -24,6 +24,16 @@ class AITimeoutError(AIClientError):
     safe_message = "AI 请求超时，请稍后重试"
 
 
+class AIAuthError(AIClientError):
+    code = "ai_auth_error"
+    safe_message = "AI 服务认证失败，请检查服务配置"
+
+
+class AIRateLimitedError(AIClientError):
+    code = "ai_rate_limited"
+    safe_message = "AI 服务请求过于频繁，请稍后重试"
+
+
 class AIUpstreamError(AIClientError):
     code = "ai_upstream_error"
     safe_message = "AI 服务连接失败，请稍后重试"

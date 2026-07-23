@@ -6,7 +6,12 @@ from typing import Any
 
 import httpx
 
-from app.services.ai_errors import AITimeoutError, AIUpstreamError
+from app.services.ai_errors import (
+    AIAuthError,
+    AIRateLimitedError,
+    AITimeoutError,
+    AIUpstreamError,
+)
 
 CHAT_COMPLETIONS_PATH = "/chat/completions"
 
@@ -66,8 +71,11 @@ class DeepSeekClient:
         Raises:
             AITimeoutError: When the upstream request times out
                 (``httpx.ReadTimeout``, ``httpx.ConnectTimeout``).
+            AIAuthError: When the upstream returns 401 or 403.
+            AIRateLimitedError: When the upstream returns 429.
             AIUpstreamError: When a transport-level error occurs
-                (``httpx.ConnectError``, ``httpx.ProxyError``, etc.).
+                (``httpx.ConnectError``, ``httpx.ProxyError``, etc.)
+                or the upstream returns a 5xx status.
         """
         payload: dict[str, Any] = {
             "model": self._model,
@@ -91,7 +99,7 @@ class DeepSeekClient:
         except httpx.RequestError as exc:
             raise AIUpstreamError() from exc
 
-        response.raise_for_status()
+        self._raise_for_upstream_status(response)
         data: dict[str, Any] = response.json()
 
         choice = data["choices"][0]
@@ -119,6 +127,22 @@ class DeepSeekClient:
     def _normalize_api_base(base: str) -> str:
         """Strip trailing slash so joining with ``/chat/completions`` works."""
         return base.rstrip("/")
+
+    @staticmethod
+    def _raise_for_upstream_status(response: httpx.Response) -> None:
+        """Map upstream HTTP status codes to application errors.
+
+        Only 401, 403, 429, and 5xx are mapped.  Other 4xx statuses fall
+        through to ``response.raise_for_status()``.
+        """
+        status = response.status_code
+        if status in (401, 403):
+            raise AIAuthError()
+        if status == 429:
+            raise AIRateLimitedError()
+        if 500 <= status <= 599:
+            raise AIUpstreamError()
+        response.raise_for_status()
 
     def __repr__(self) -> str:
         return f"<DeepSeekClient model={self._model!r}>"

@@ -524,6 +524,149 @@ def test_regular_text_still_works_after_error_handling(monkeypatch: pytest.Monke
 
 
 # ---------------------------------------------------------------------------
+# 8.  HTTP status code error mapping
+# ---------------------------------------------------------------------------
+
+
+def _error_response(status_code: int, body: object = None) -> httpx.Response:
+    """Build an error response with optional JSON body."""
+    if body is not None:
+        return httpx.Response(status_code, json=body)
+    return httpx.Response(status_code, text="Error")
+
+
+def test_status_401_maps_to_ai_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return _error_response(401)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIAuthError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIAuthError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_auth_error"
+
+
+def test_status_403_maps_to_ai_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return _error_response(403)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIAuthError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIAuthError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_auth_error"
+
+
+def test_status_429_maps_to_ai_rate_limited(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return _error_response(429)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIRateLimitedError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIRateLimitedError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_rate_limited"
+
+
+@pytest.mark.parametrize("status_code", [500, 502, 503])
+def test_5xx_maps_to_ai_upstream_error(
+    monkeypatch: pytest.MonkeyPatch, status_code: int
+) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return _error_response(status_code)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIUpstreamError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIUpstreamError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_upstream_error"
+
+
+def test_upstream_error_body_not_leaked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Even if the upstream response body contains sensitive data, the error
+    message must not expose it."""
+    leaky_body = {
+        "error": {
+            "message": f"API key {TEST_API_KEY} invalid",
+            "type": "auth_error",
+        }
+    }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return _error_response(401, body=leaky_body)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIAuthError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIAuthError) as exc_info:
+        _run_async(run())
+
+    err_str = str(exc_info.value)
+    assert TEST_API_KEY not in err_str, "API Key leaked from upstream body into error message"
+
+
+def test_existing_tests_still_pass_after_status_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Smoke test that the 200 path still works."""
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_ok_response(content="ok"))
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> dict[str, Any]:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            return await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    result = _run_async(run())
+    assert result["content"] == "ok"
+
+
+# ---------------------------------------------------------------------------
 # 5.  No real network access
 # ---------------------------------------------------------------------------
 
