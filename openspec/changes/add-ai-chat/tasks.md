@@ -46,13 +46,14 @@
 - [x] 2.3.3 GREEN: Implement DeepSeekClient with basic create_chat_completion() using httpx
 - [x] 2.3.4 RED: Test tool_calls response parsing
 - [x] 2.3.5 GREEN: Implement tool_calls parsing
-- [ ] 2.3.6 RED: Test timeout maps to ai_timeout
+- [x] 2.3.6 RED: Test timeout maps to ai_timeout
 - [ ] 2.3.7 RED: Test 401/403 maps to ai_auth_error
 - [ ] 2.3.8 RED: Test 429 maps to ai_rate_limited
 - [ ] 2.3.9 RED: Test 5xx maps to ai_upstream_error
 - [ ] 2.3.10 RED: Test malformed response (missing choices/message) maps to ai_invalid_response
-- [ ] 2.3.11 RED: Test other httpx errors map to ai_upstream_error
-- [ ] 2.3.12 RED: Test httpx raw exceptions not exposed to browser
+- [x] 2.3.11 RED: Test other httpx errors map to ai_upstream_error
+- [x] 2.3.12a RED: Error message does not contain API Key, Authorization header, or user message
+- [ ] 2.3.12 RED: Test httpx raw exceptions not exposed to browser (requires Route layer)
 - [ ] 2.3.13 RED: Test automatic retry is NOT implemented
 - [ ] 2.3.14 RED: Test thinking enabled — sends reasoning_effort from DEEPSEEK_REASONING_EFFORT
 - [ ] 2.3.15 RED: Test thinking disabled — no reasoning parameters sent

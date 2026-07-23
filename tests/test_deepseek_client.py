@@ -381,6 +381,149 @@ def test_regular_text_still_works_with_tool_call_changes(monkeypatch: pytest.Mon
 
 
 # ---------------------------------------------------------------------------
+# 7.  Timeout and network error mapping
+# ---------------------------------------------------------------------------
+
+
+def test_read_timeout_maps_to_ai_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout(
+            "simulated read timeout",
+            request=request,
+        )
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AITimeoutError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AITimeoutError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_timeout"
+
+
+def test_connect_timeout_maps_to_ai_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout(
+            "simulated connect timeout",
+            request=request,
+        )
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AITimeoutError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AITimeoutError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_timeout"
+
+
+def test_connect_error_maps_to_ai_upstream_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(
+            "simulated connection refused",
+            request=request,
+        )
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIUpstreamError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIUpstreamError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_upstream_error"
+
+
+def test_proxy_error_maps_to_ai_upstream_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ProxyError(
+            "simulated proxy failure",
+            request=request,
+        )
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIUpstreamError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIUpstreamError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_upstream_error"
+
+
+def test_error_has_safe_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Error string must not contain API Key, Authorization, or user messages."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIUpstreamError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIUpstreamError) as exc_info:
+        _run_async(run())
+
+    err_str = str(exc_info.value)
+    assert TEST_API_KEY not in err_str, "API Key leaked into error message"
+    assert "Authorization" not in err_str, "Header leaked into error message"
+    assert "Bearer" not in err_str, "Auth scheme leaked into error message"
+    assert "Hello" not in err_str, "User message leaked into error message"
+
+
+def test_regular_text_still_works_after_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Existing success path must still work after adding error handling."""
+    expected = "Hello!"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_ok_response(content=expected))
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> dict[str, Any]:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            return await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    result = _run_async(run())
+    assert result["content"] == expected
+
+
+# ---------------------------------------------------------------------------
 # 5.  No real network access
 # ---------------------------------------------------------------------------
 

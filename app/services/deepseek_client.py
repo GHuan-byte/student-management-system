@@ -6,6 +6,8 @@ from typing import Any
 
 import httpx
 
+from app.services.ai_errors import AITimeoutError, AIUpstreamError
+
 CHAT_COMPLETIONS_PATH = "/chat/completions"
 
 
@@ -60,6 +62,12 @@ class DeepSeekClient:
         ``tool_calls`` they are included as a list under the ``tool_calls``
         key, preserving the original structure (``id``, ``type``,
         ``function.name``, ``function.arguments`` as a JSON string).
+
+        Raises:
+            AITimeoutError: When the upstream request times out
+                (``httpx.ReadTimeout``, ``httpx.ConnectTimeout``).
+            AIUpstreamError: When a transport-level error occurs
+                (``httpx.ConnectError``, ``httpx.ProxyError``, etc.).
         """
         payload: dict[str, Any] = {
             "model": self._model,
@@ -74,7 +82,15 @@ class DeepSeekClient:
             "Content-Type": "application/json",
         }
 
-        response = await self._client.post(url, json=payload, headers=headers)
+        try:
+            response = await self._client.post(
+                url, json=payload, headers=headers
+            )
+        except httpx.TimeoutException as exc:
+            raise AITimeoutError() from exc
+        except httpx.RequestError as exc:
+            raise AIUpstreamError() from exc
+
         response.raise_for_status()
         data: dict[str, Any] = response.json()
 
