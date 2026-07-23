@@ -8,7 +8,104 @@ from pathlib import Path
 from typing import Any
 
 DEV_SECRET_KEY = "dev-secret-change-in-production"
+PLACEHOLDER_SECRET_KEY = "replace-with-development-secret"
 DEFAULT_DATABASE_NAME = "students_v2.db"
+
+# ---------------------------------------------------------------------------
+# AI Chat environment variable names
+# ---------------------------------------------------------------------------
+
+DEEPSEEK_REQUIRED_VARS = ("DEEPSEEK_API_KEY", "DEEPSEEK_API_BASE", "DEEPSEEK_MODEL")
+
+AI_STRING_VARS = (
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_API_BASE",
+    "DEEPSEEK_MODEL",
+    "DEEPSEEK_REASONING_EFFORT",
+)
+
+AI_INT_VARS = (
+    "DEEPSEEK_TIMEOUT_SECONDS",
+    "DEEPSEEK_MAX_OUTPUT_TOKENS",
+    "AI_MAX_TOOL_ROUNDS",
+    "AI_MAX_HISTORY_MESSAGES",
+    "AI_MAX_MESSAGE_LENGTH",
+    "AI_CONFIRMATION_TOKEN_TTL_SECONDS",
+)
+
+AI_BOOL_VARS = (
+    "DEEPSEEK_THINKING",
+    "DEEPSEEK_TRUST_ENV",
+)
+
+
+# ---------------------------------------------------------------------------
+# AI env‑var parsing helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_int_env(key: str) -> int | None:
+    """Read an integer from the environment; return None if missing/invalid."""
+    raw = os.environ.get(key)
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_bool_env(key: str) -> bool:
+    """Read a boolean from the environment (case‑insensitive)."""
+    raw = os.environ.get(key)
+    if raw is None:
+        return False
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+INSECURE_SECRET_KEYS = frozenset({
+    DEV_SECRET_KEY,
+    PLACEHOLDER_SECRET_KEY,
+})
+
+
+def _is_secret_key_safe(secret_key: str | None) -> bool:
+    """Return True when SECRET_KEY is set to a non‑development value."""
+    if not secret_key:
+        return False
+    return secret_key not in INSECURE_SECRET_KEYS
+
+
+def _build_ai_config() -> dict[str, Any]:
+    """Read all AI‑related configuration from the environment.
+
+    No hardcoded fallback for API key, API base, or model.
+    """
+    cfg: dict[str, Any] = {}
+
+    for var in AI_STRING_VARS:
+        cfg[var] = os.environ.get(var) or None
+
+    for var in AI_INT_VARS:
+        cfg[var] = _parse_int_env(var)
+
+    for var in AI_BOOL_VARS:
+        cfg[var] = _parse_bool_env(var)
+
+    # AI_CONFIGURED is True only when all required DeepSeek vars are set
+    cfg["AI_CONFIGURED"] = all(cfg.get(var) for var in DEEPSEEK_REQUIRED_VARS)
+
+    # AI_WRITE_CONFIRMATION depends only on SECRET_KEY safety
+    raw_secret = os.environ.get("SECRET_KEY")
+    cfg["AI_WRITE_CONFIRMATION"] = _is_secret_key_safe(raw_secret)
+
+    return cfg
+
+
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -19,7 +116,7 @@ class Config:
     testing: bool = False
 
     def to_mapping(self) -> dict[str, Any]:
-        return {
+        mapping: dict[str, Any] = {
             "APP_ENV": os.environ.get("APP_ENV", "development"),
             "DEBUG": self.debug,
             "TESTING": self.testing,
@@ -27,6 +124,8 @@ class Config:
             "LOG_LEVEL": os.environ.get("LOG_LEVEL", "INFO").upper(),
             "DATABASE_PATH": os.environ.get("DATABASE_PATH"),
         }
+        mapping.update(_build_ai_config())
+        return mapping
 
     def default_database_path(self, instance_path: Path) -> Path | None:
         return instance_path / DEFAULT_DATABASE_NAME

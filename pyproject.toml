@@ -9,8 +9,14 @@ description = "Student Management System V2 foundation"
 requires-python = ">=3.12"
 dependencies = [
     "flask>=3.0",
+    "httpx>=0.28",
     "mcp>=1.27,<2",
     "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
 ]
 
 [tool.setuptools.packages.find]
