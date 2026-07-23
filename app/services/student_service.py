@@ -91,12 +91,69 @@ class StudentService:
             raise NotFoundError("Student not found")
         return student
 
+    def get_student_by_number(self, student_number: Any) -> dict[str, Any]:
+        normalized_student_number = self._normalize_lookup_student_number(student_number)
+        student = self.repository.get_student_by_number(normalized_student_number)
+        if student is None:
+            raise NotFoundError("Student not found")
+        return student
+
+    def search_students(
+        self,
+        *,
+        keyword: Any,
+        page: Any = None,
+        page_size: Any = None,
+        sort_by: str | None = None,
+        sort_order: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_keyword = self._normalize_required_keyword(keyword)
+        return self.list_students(
+            keyword=normalized_keyword,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+
     def create_student(self, payload: Any) -> dict[str, Any]:
         normalized_payload = self._normalize_payload(payload, partial=False)
         try:
             return self.repository.add_student(normalized_payload)
         except sqlite3.IntegrityError as error:
             raise self._translate_integrity_error(error) from error
+
+    def upsert_student(self, payload: Any) -> dict[str, Any]:
+        normalized_payload = self._normalize_payload(payload, partial=False)
+        normalized_student_number = normalized_payload["student_number"]
+        existing_student = self.repository.get_student_by_number(normalized_student_number)
+
+        if existing_student is None:
+            try:
+                created_student = self.repository.add_student(normalized_payload)
+            except sqlite3.IntegrityError as error:
+                raise self._translate_integrity_error(error) from error
+            return {
+                "action": "created",
+                "student": created_student,
+            }
+
+        update_payload = {
+            field: value
+            for field, value in normalized_payload.items()
+            if field != "student_number"
+        }
+        try:
+            updated_student = self.repository.update_student(existing_student["id"], update_payload)
+        except sqlite3.IntegrityError as error:
+            raise self._translate_integrity_error(error) from error
+
+        if updated_student is None:
+            raise NotFoundError("Student not found")
+        return {
+            "action": "updated",
+            "student": updated_student,
+        }
 
     def update_student(self, student_id: int, payload: Any) -> dict[str, Any]:
         normalized_payload = self._normalize_payload(payload, partial=True)
@@ -226,6 +283,22 @@ class StudentService:
                 "sort_order must be asc or desc",
                 details={"allowed_sort_orders": ["asc", "desc"]},
             )
+        return normalized
+
+    def _normalize_required_keyword(self, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValidationError("keyword must be a string")
+        normalized = value.strip()
+        if not normalized:
+            raise ValidationError("keyword must be a non-empty string")
+        return normalized
+
+    def _normalize_lookup_student_number(self, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValidationError("student_number must be a string")
+        normalized = value.strip()
+        if not normalized:
+            raise ValidationError("student_number must be a non-empty string")
         return normalized
 
     def _normalize_field(self, field: str, value: Any) -> Any:

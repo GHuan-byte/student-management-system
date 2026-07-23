@@ -10,10 +10,9 @@ from flask import Flask
 
 from app.cli import register_cli_commands
 from app.config import create_config
-from app.database.connection import create_connection_factory
 from app.error_handlers import register_error_handlers
 from app.logging_config import configure_logging
-from app.repositories.student_repository import StudentRepository
+from app.services.factory import create_student_service_from_database_path
 from app.services.student_service import StudentService
 
 
@@ -30,13 +29,7 @@ def register_blueprints(app: Flask) -> None:
 
 def create_student_service(app: Flask) -> StudentService:
     """Create a student service from configured application dependencies."""
-    database_path = app.config["DATABASE_PATH"]
-    connection_factory = create_connection_factory(database_path)
-    repository = StudentRepository(
-        database_path=database_path,
-        connection_factory=connection_factory,
-    )
-    return StudentService(repository)
+    return create_student_service_from_database_path(app.config["DATABASE_PATH"])
 
 
 def create_app(

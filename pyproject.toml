@@ -9,8 +9,9 @@ description = "Student Management System V2 foundation"
 requires-python = ">=3.12"
 dependencies = [
     "flask>=3.0",
+    "mcp>=1.27,<2",
     "python-dotenv>=1.0",
 ]
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["app*", "mcp_server*", "mcp_client*"]

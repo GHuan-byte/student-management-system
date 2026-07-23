@@ -4,9 +4,9 @@ Student Management System V2 is a clean rewrite of the original project in
 `D:\Python\student-management-system`.
 
 This repository is currently implementing the approved OpenSpec change
-`enhance-student-management`, which adds a Dashboard, shared navigation,
-pagination, sorting, current-page selection, and batch deletion on top of the
-existing student CRUD foundation.
+`add-mcp-student-tools`, which adds a stdio MCP server, a local MCP client,
+and a temporary-database self-check on top of the existing Flask student
+management application.
 
 ## Current Scope
 
@@ -28,17 +28,20 @@ Implemented in this phase:
 - Pagination, sorting, current-page select-all, and batch delete
 - Logging configuration
 - Application entry point
+- stdio MCP student tools
+- Local MCP client wrappers
+- Temporary-database MCP self-check
 
 Still not implemented in this phase:
 
 - Authentication
-- MCP
 - AI Chat
 - Import or export
 - Legacy data migration
+- HTTP MCP transport
 
 Complete automated testing is deferred to a later Testing / Final Verification
-Change.
+Change. This phase does not add pytest.
 
 ## Requirements
 
@@ -47,10 +50,15 @@ Change.
 ## Dependency Notes
 
 - SQLite is part of Python's standard library.
-- No additional package installation is required for this change.
-- Do not run `pip` as part of this Change.
-- If an unexpected dependency is discovered, stop and report it before
-  continuing.
+- MCP support uses `mcp>=1.27,<2`.
+- Do not install dependencies automatically as part of this Change.
+- If the current environment is missing dependencies, install them manually.
+
+Example manual install:
+
+```powershell
+pip install -r requirements.txt
+```
 
 ## Initialize the Database
 
@@ -63,7 +71,7 @@ flask --app run.py init-db
 The command may create the configured parent directory and any missing tables,
 but it does not delete existing tables or erase records.
 
-## Run the Application
+## Run the Flask Application
 
 Start the application manually:
 
@@ -76,6 +84,135 @@ Optional host and port overrides:
 ```powershell
 python run.py --host 0.0.0.0 --port 5001
 ```
+
+## MCP Server
+
+This phase adds a stdio-only MCP server. It does not add Streamable HTTP, SSE,
+FastAPI, Uvicorn, or any Flask MCP route.
+
+Start the MCP server:
+
+```powershell
+python -m mcp_server.server
+```
+
+Windows example using the current virtual-environment Python path:
+
+```powershell
+D:\Python\student-management-system-v2\student-v2-env\Scripts\python.exe -m mcp_server.server
+```
+
+The MCP server uses stdout for protocol messages only. Do not add debug
+`print()` output to stdout.
+
+## MCP Client
+
+The local client wrappers live in `mcp_client/client.py` and provide:
+
+- `list_mcp_tools_async()`
+- `call_mcp_tool_async(tool_name, arguments)`
+- `list_mcp_tools()`
+- `call_mcp_tool(tool_name, arguments)`
+
+The sync wrappers must be used only outside an already-running event loop.
+
+## MCP Self-Check
+
+Run the MCP self-check manually:
+
+```powershell
+python -m mcp_client.self_check
+```
+
+Windows example with the current virtual-environment Python path:
+
+```powershell
+D:\Python\student-management-system-v2\student-v2-env\Scripts\python.exe -m mcp_client.self_check
+```
+
+The self-check:
+
+- creates a temporary SQLite database
+- initializes schema through the approved database initialization logic
+- passes the temporary `DATABASE_PATH` to the stdio MCP server
+- verifies the full MCP tool set and core validation behavior
+- does not modify `instance/students_v2.db`
+
+## DATABASE_PATH
+
+Both Flask and MCP use the same `DATABASE_PATH` resolution rules.
+
+- If `DATABASE_PATH` is unset, development defaults to
+  `instance/students_v2.db`
+- If `DATABASE_PATH` is relative, it resolves from the project root
+- The MCP self-check overrides `DATABASE_PATH` with a temporary SQLite file
+- The production-like database and the temporary self-check database are not
+  the same thing
+
+## MCP Tool Summary
+
+The stdio MCP server exposes these 10 tools:
+
+- `list_students`
+- `search_students`
+- `get_student_by_id`
+- `get_student_by_number`
+- `count_students`
+- `add_student`
+- `update_student`
+- `upsert_student`
+- `delete_student`
+- `batch_delete_students`
+
+These tools reuse the same approved student model:
+
+- `student_number`
+- `name`
+- `gender`
+- `age`
+- `major`
+- `year_level`
+- `score`
+- `phone`
+- `email`
+
+`year_level` remains one of `大一` / `大二` / `大三` / `大四`, `score` remains
+`0-100`, and leading zeros in `student_number` are preserved.
+
+## MCP Client Config Examples
+
+Codex-style stdio client example:
+
+```json
+{
+  "command": "D:\\Python\\student-management-system-v2\\student-v2-env\\Scripts\\python.exe",
+  "args": ["-m", "mcp_server.server"],
+  "cwd": "D:\\Python\\student-management-system-v2",
+  "env": {
+    "DATABASE_PATH": "instance/students_v2.db"
+  }
+}
+```
+
+Claude Desktop or Claude Code style stdio client example:
+
+```json
+{
+  "mcpServers": {
+    "student-management-v2": {
+      "command": "D:\\Python\\student-management-system-v2\\student-v2-env\\Scripts\\python.exe",
+      "args": ["-m", "mcp_server.server"],
+      "cwd": "D:\\Python\\student-management-system-v2",
+      "env": {
+        "DATABASE_PATH": "instance/students_v2.db"
+      }
+    }
+  }
+}
+```
+
+These are example configurations only. Do not commit real secrets, private API
+keys, or runtime database copies to Git.
 
 ## Manual Verification
 
@@ -121,6 +258,10 @@ Manual acceptance checks for this Change include:
 - verify `404 not_found` for a missing student
 - verify `409 duplicate` for a duplicate `student_number`
 - verify the page shows `year_level` as `年级` and `score` as `成绩`
+- verify a stdio MCP client can list all 10 student tools
+- verify MCP returns unified structured results and validation errors
+- verify `python -m mcp_client.self_check` uses only a temporary database
+- verify AI Chat is still not part of this phase
 
 ## Project Layout
 
@@ -146,6 +287,7 @@ student-management-system-v2/
 |   |   `-- students.py
 |   |-- services/
 |   |   |-- __init__.py
+|   |   |-- factory.py
 |   |   `-- student_service.py
 |   |-- static/
 |   |   |-- css/
@@ -163,6 +305,16 @@ student-management-system-v2/
 |       |-- errors.py
 |       `-- response.py
 |-- docs/
+|-- mcp_client/
+|   |-- __init__.py
+|   |-- client.py
+|   `-- self_check.py
+|-- mcp_server/
+|   |-- __init__.py
+|   |-- dependencies.py
+|   |-- result.py
+|   |-- server.py
+|   `-- student_tools.py
 |-- openspec/
 |-- .env.example
 |-- .gitignore
