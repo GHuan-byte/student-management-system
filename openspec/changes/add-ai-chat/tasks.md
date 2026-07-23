@@ -41,9 +41,9 @@
 
 ### 2.3 DeepSeek Client (TDD: test_deepseek_client.py)
 
-- [ ] 2.3.1 RED: Test client uses httpx only, no openai SDK fallback
-- [ ] 2.3.2 RED: Test normal text response returns parsed content
-- [ ] 2.3.3 GREEN: Implement DeepSeekClient with basic send_message() using httpx
+- [x] 2.3.1 RED: Test client uses httpx only, no openai SDK fallback (httpx.AsyncClient + MockTransport)
+- [x] 2.3.2 RED: Test normal text response returns parsed content
+- [x] 2.3.3 GREEN: Implement DeepSeekClient with basic create_chat_completion() using httpx
 - [ ] 2.3.4 RED: Test tool_calls response parsing
 - [ ] 2.3.5 GREEN: Implement tool_calls parsing
 - [ ] 2.3.6 RED: Test timeout maps to ai_timeout
@@ -57,12 +57,12 @@
 - [ ] 2.3.14 RED: Test thinking enabled — sends reasoning_effort from DEEPSEEK_REASONING_EFFORT
 - [ ] 2.3.15 RED: Test thinking disabled — no reasoning parameters sent
 - [ ] 2.3.16 RED: Test reasoning_content extracted for internal use, not in response
-- [ ] 2.3.17 RED: Test API Base from env, no hardcoded default
-- [ ] 2.3.18 RED: Test Model from env, no hardcoded default
-- [ ] 2.3.19 RED: Test API Key in Bearer header, not in logs/exception text/return values
-- [ ] 2.3.20 RED: Test MockTransport used in default tests, no real network
+- [x] 2.3.17 RED: Test API Base from env, no hardcoded default
+- [x] 2.3.18 RED: Test Model from env, no hardcoded default
+- [x] 2.3.19 RED: Test API Key in Bearer header, not in logs/exception text/return values
+- [x] 2.3.20 RED: Test MockTransport used in default tests, no real network
 - [ ] 2.3.21 GREEN: Implement all error handling, thinking mode, and dependency injection
-- [ ] 2.3.22 REFACTOR: Clean up DeepSeekClient under test coverage
+- [x] 2.3.22 REFACTOR: Clean up DeepSeekClient under test coverage
 
 ### 2.4 MCP Tool Adapter (TDD: test_mcp_tool_adapter.py)
 
