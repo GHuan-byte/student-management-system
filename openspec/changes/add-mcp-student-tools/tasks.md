@@ -66,11 +66,11 @@
 
 ## 12. USER Acceptance
 
-- [ ] 12.1 [USER] Manually confirm the documented MCP dependency is installed if the environment did not already provide the `mcp` package.
-- [ ] 12.2 [USER] Start the stdio MCP server with the documented command and confirm a client can list the approved student tools.
-- [ ] 12.3 [USER] Verify `count_students` returns the real SQLite-backed total for the current V2 database.
-- [ ] 12.4 [USER] Verify `get_student_by_number` preserves a leading-zero `student_number`.
-- [ ] 12.5 [USER] Verify add, update, upsert, delete, and batch delete work through MCP with the approved student fields `year_level` and `score`.
-- [ ] 12.6 [USER] Verify invalid parameters return structured MCP errors instead of raw tracebacks or SQL.
-- [ ] 12.7 [USER] Verify the self-check uses a temporary database and does not modify the production database.
-- [ ] 12.8 [USER] Verify Codex or another stdio MCP client can connect using the documented project command and configuration examples.
+- [x] 12.1 [USER] Manually confirm the documented MCP dependency is installed if the environment did not already provide the `mcp` package.
+- [x] 12.2 [USER] Start the stdio MCP server with the documented command and confirm a client can list the approved student tools.
+- [x] 12.3 [USER] Verify `count_students` returns the real SQLite-backed total for the current V2 database.
+- [x] 12.4 [USER] Verify `get_student_by_number` preserves a leading-zero `student_number`.
+- [x] 12.5 [USER] Verify add, update, upsert, delete, and batch delete work through MCP with the approved student fields `year_level` and `score`.
+- [x] 12.6 [USER] Verify invalid parameters return structured MCP errors instead of raw tracebacks or SQL.
+- [x] 12.7 [USER] Verify the self-check uses a temporary database and does not modify the production database.
+- [x] 12.8 [USER] Verify Codex or another stdio MCP client can connect using the documented project command and configuration examples.
