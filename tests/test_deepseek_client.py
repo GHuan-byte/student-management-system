@@ -667,6 +667,248 @@ def test_existing_tests_still_pass_after_status_mapping(monkeypatch: pytest.Monk
 
 
 # ---------------------------------------------------------------------------
+# 9.  Invalid upstream response handling
+# ---------------------------------------------------------------------------
+
+
+def _invalid_response(
+    body: object,
+    status_code: int = 200,
+) -> httpx.Response:
+    """Return a response with arbitrary (possibly invalid) JSON body."""
+    return httpx.Response(status_code, json=body)
+
+
+def test_non_json_response_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not-json")
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_json_array_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = httpx.MockTransport(lambda r: _invalid_response([]))
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_empty_object_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = httpx.MockTransport(lambda r: _invalid_response({}))
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_choices_null_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = httpx.MockTransport(lambda r: _invalid_response({"choices": None}))
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_choices_string_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = httpx.MockTransport(lambda r: _invalid_response({"choices": "invalid"}))
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_choices_empty_array_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = httpx.MockTransport(lambda r: _invalid_response({"choices": []}))
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_choice_not_object_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = httpx.MockTransport(
+        lambda r: _invalid_response({"choices": ["invalid"]})
+    )
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_choice_missing_message_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = httpx.MockTransport(
+        lambda r: _invalid_response({"choices": [{}]})
+    )
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_message_null_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = httpx.MockTransport(
+        lambda r: _invalid_response({"choices": [{"message": None}]})
+    )
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_message_string_maps_to_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    transport = httpx.MockTransport(
+        lambda r: _invalid_response({"choices": [{"message": "invalid"}]})
+    )
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_message_no_content_no_tool_calls_maps_to_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """message exists but has neither content nor tool_calls."""
+    transport = httpx.MockTransport(
+        lambda r: _invalid_response(
+            {"choices": [{"message": {"role": "assistant"}}]}
+        )
+    )
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    assert exc_info.value.code == "ai_invalid_response"
+
+
+def test_invalid_response_safe_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Error string must not contain raw response body."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<script>malicious</script>")
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIInvalidResponseError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIInvalidResponseError) as exc_info:
+        _run_async(run())
+
+    err_str = str(exc_info.value)
+    assert "<script>" not in err_str, "Raw response body leaked into error"
+    assert TEST_API_KEY not in err_str
+
+
+# ---------------------------------------------------------------------------
 # 5.  No real network access
 # ---------------------------------------------------------------------------
 

@@ -50,7 +50,7 @@
 - [x] 2.3.7 RED: Test 401/403 maps to ai_auth_error
 - [x] 2.3.8 RED: Test 429 maps to ai_rate_limited
 - [x] 2.3.9 RED: Test 5xx maps to ai_upstream_error
-- [ ] 2.3.10 RED: Test malformed response (missing choices/message) maps to ai_invalid_response
+- [x] 2.3.10 RED: Test malformed response (missing choices/message) maps to ai_invalid_response
 - [x] 2.3.11 RED: Test other httpx errors map to ai_upstream_error
 - [x] 2.3.12a RED: Error message does not contain API Key, Authorization header, or user message
 - [ ] 2.3.12 RED: Test httpx raw exceptions not exposed to browser (requires Route layer)

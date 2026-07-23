@@ -8,6 +8,7 @@ import httpx
 
 from app.services.ai_errors import (
     AIAuthError,
+    AIInvalidResponseError,
     AIRateLimitedError,
     AITimeoutError,
     AIUpstreamError,
@@ -73,6 +74,10 @@ class DeepSeekClient:
                 (``httpx.ReadTimeout``, ``httpx.ConnectTimeout``).
             AIAuthError: When the upstream returns 401 or 403.
             AIRateLimitedError: When the upstream returns 429.
+            AIInvalidResponseError: When the upstream response is not valid
+                Chat Completions JSON (malformed JSON, missing ``choices``,
+                missing ``message``, or missing both ``content`` and
+                ``tool_calls``).
             AIUpstreamError: When a transport-level error occurs
                 (``httpx.ConnectError``, ``httpx.ProxyError``, etc.)
                 or the upstream returns a 5xx status.
@@ -100,14 +105,7 @@ class DeepSeekClient:
             raise AIUpstreamError() from exc
 
         self._raise_for_upstream_status(response)
-        data: dict[str, Any] = response.json()
-
-        choice = data["choices"][0]
-        message = choice["message"]
-        result: dict[str, Any] = {"content": message.get("content")}
-        if "tool_calls" in message:
-            result["tool_calls"] = message["tool_calls"]
-        return result
+        return self._parse_response(response)
 
     # ------------------------------------------------------------------
     # Async context manager
@@ -127,6 +125,44 @@ class DeepSeekClient:
     def _normalize_api_base(base: str) -> str:
         """Strip trailing slash so joining with ``/chat/completions`` works."""
         return base.rstrip("/")
+
+    @staticmethod
+    def _parse_response(response: httpx.Response) -> dict[str, Any]:
+        """Parse and validate the Chat Completions JSON response.
+
+        Returns a dict with ``content`` and optionally ``tool_calls``.
+
+        Raises:
+            AIInvalidResponseError: When the response body does not conform
+                to the expected Chat Completions structure.
+        """
+        try:
+            data = response.json()
+        except (ValueError, TypeError) as exc:
+            raise AIInvalidResponseError() from exc
+
+        if not isinstance(data, dict):
+            raise AIInvalidResponseError()
+
+        choices = data.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise AIInvalidResponseError()
+
+        choice = choices[0]
+        if not isinstance(choice, dict):
+            raise AIInvalidResponseError()
+
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            raise AIInvalidResponseError()
+
+        if "tool_calls" in message:
+            return {"content": message.get("content"), "tool_calls": message["tool_calls"]}
+
+        if "content" in message:
+            return {"content": message["content"]}
+
+        raise AIInvalidResponseError()
 
     @staticmethod
     def _raise_for_upstream_status(response: httpx.Response) -> None:

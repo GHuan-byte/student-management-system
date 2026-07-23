@@ -34,6 +34,11 @@ class AIRateLimitedError(AIClientError):
     safe_message = "AI 服务请求过于频繁，请稍后重试"
 
 
+class AIInvalidResponseError(AIClientError):
+    code = "ai_invalid_response"
+    safe_message = "AI 服务返回了无法处理的响应"
+
+
 class AIUpstreamError(AIClientError):
     code = "ai_upstream_error"
     safe_message = "AI 服务连接失败，请稍后重试"
