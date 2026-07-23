@@ -243,6 +243,144 @@ def test_api_base_with_trailing_slash(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 6.  Tool calls response parsing
+# ---------------------------------------------------------------------------
+
+
+def _tool_calls_response(
+    tool_calls: list[dict[str, Any]],
+    content: str | None = None,
+) -> dict[str, Any]:
+    """Return a Chat Completions response with tool_calls."""
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                    "tool_calls": tool_calls,
+                }
+            }
+        ]
+    }
+
+
+def test_parses_single_tool_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    tc = [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "count_students",
+                "arguments": "{}",
+            },
+        }
+    ]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_tool_calls_response(tc))
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> dict[str, Any]:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            return await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    result = _run_async(run())
+
+    assert result["content"] is None
+    assert len(result["tool_calls"]) == 1
+    assert result["tool_calls"][0]["id"] == "call_1"
+    assert result["tool_calls"][0]["type"] == "function"
+    assert result["tool_calls"][0]["function"]["name"] == "count_students"
+    assert result["tool_calls"][0]["function"]["arguments"] == "{}"
+
+
+def test_preserves_multiple_tool_calls_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    tc = [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "count_students", "arguments": "{}"},
+        },
+        {
+            "id": "call_2",
+            "type": "function",
+            "function": {"name": "list_students", "arguments": "{}"},
+        },
+    ]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_tool_calls_response(tc))
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> dict[str, Any]:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            return await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    result = _run_async(run())
+
+    assert len(result["tool_calls"]) == 2
+    assert result["tool_calls"][0]["id"] == "call_1"
+    assert result["tool_calls"][1]["id"] == "call_2"
+
+
+def test_content_is_null_when_tool_calls_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    tc = [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "count_students", "arguments": "{}"},
+        }
+    ]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_tool_calls_response(tc, content=None))
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> dict[str, Any]:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            return await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    result = _run_async(run())
+
+    assert result["content"] is None
+
+
+def test_regular_text_still_works_with_tool_call_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Existing text-only responses must still return content with no tool_calls key."""
+    expected = "Hello!"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_ok_response(content=expected))
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> dict[str, Any]:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            return await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    result = _run_async(run())
+
+    assert result["content"] == expected
+    assert "tool_calls" not in result
+
+
+# ---------------------------------------------------------------------------
 # 5.  No real network access
 # ---------------------------------------------------------------------------
 

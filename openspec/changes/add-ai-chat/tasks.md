@@ -44,8 +44,8 @@
 - [x] 2.3.1 RED: Test client uses httpx only, no openai SDK fallback (httpx.AsyncClient + MockTransport)
 - [x] 2.3.2 RED: Test normal text response returns parsed content
 - [x] 2.3.3 GREEN: Implement DeepSeekClient with basic create_chat_completion() using httpx
-- [ ] 2.3.4 RED: Test tool_calls response parsing
-- [ ] 2.3.5 GREEN: Implement tool_calls parsing
+- [x] 2.3.4 RED: Test tool_calls response parsing
+- [x] 2.3.5 GREEN: Implement tool_calls parsing
 - [ ] 2.3.6 RED: Test timeout maps to ai_timeout
 - [ ] 2.3.7 RED: Test 401/403 maps to ai_auth_error
 - [ ] 2.3.8 RED: Test 429 maps to ai_rate_limited

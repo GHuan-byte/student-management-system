@@ -55,7 +55,11 @@ class DeepSeekClient:
     ) -> dict[str, Any]:
         """Send a Chat Completions request and return the assistant response.
 
-        Returns a dict with at least ``content`` (the assistant message text).
+        Returns a dict with ``content`` (assistant text, or ``None`` when the
+        response carries ``tool_calls``).  When the upstream returns
+        ``tool_calls`` they are included as a list under the ``tool_calls``
+        key, preserving the original structure (``id``, ``type``,
+        ``function.name``, ``function.arguments`` as a JSON string).
         """
         payload: dict[str, Any] = {
             "model": self._model,
@@ -76,7 +80,10 @@ class DeepSeekClient:
 
         choice = data["choices"][0]
         message = choice["message"]
-        return {"content": message["content"]}
+        result: dict[str, Any] = {"content": message.get("content")}
+        if "tool_calls" in message:
+            result["tool_calls"] = message["tool_calls"]
+        return result
 
     # ------------------------------------------------------------------
     # Async context manager
