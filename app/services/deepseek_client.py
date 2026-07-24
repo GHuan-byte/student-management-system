@@ -64,14 +64,24 @@ class DeepSeekClient:
     async def create_chat_completion(
         self,
         messages: list[dict[str, str]],
+        *,
+        tools: list[dict[str, object]] | None = None,
     ) -> dict[str, Any]:
         """Send a Chat Completions request and return the assistant response.
 
-        Returns a dict with ``content`` (assistant text, or ``None`` when the
-        response carries ``tool_calls``).  When the upstream returns
-        ``tool_calls`` they are included as a list under the ``tool_calls``
-        key, preserving the original structure (``id``, ``type``,
-        ``function.name``, ``function.arguments`` as a JSON string).
+        Args:
+            messages: Conversation messages.
+            tools: Optional OpenAI-compatible tool schemas (e.g. from
+                ``MCPToolAdapter.get_openai_tools()``).  Passed as-is
+                in the ``tools`` field of the request body.  The caller's
+                list is not modified.
+
+        Returns:
+            A dict with ``content`` (assistant text, or ``None`` when the
+            response carries ``tool_calls``).  When the upstream returns
+            ``tool_calls`` they are included as a list under the ``tool_calls``
+            key, preserving the original structure (``id``, ``type``,
+            ``function.name``, ``function.arguments`` as a JSON string).
 
         Raises:
             AINotConfiguredError: When thinking is enabled but
@@ -89,7 +99,7 @@ class DeepSeekClient:
                 (``httpx.ConnectError``, ``httpx.ProxyError``, etc.)
                 or the upstream returns a 5xx status.
         """
-        payload = self._build_payload(messages)
+        payload = self._build_payload(messages, tools=tools)
         url = f"{self._api_base}{CHAT_COMPLETIONS_PATH}"
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -122,7 +132,12 @@ class DeepSeekClient:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _build_payload(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+    def _build_payload(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, object]] | None = None,
+    ) -> dict[str, Any]:
         """Construct the request JSON body, including thinking params if enabled."""
         if self._thinking_enabled:
             self._validate_reasoning_effort()
@@ -131,6 +146,8 @@ class DeepSeekClient:
             "model": self._model,
             "messages": messages,
         }
+        if tools is not None:
+            payload["tools"] = tools
         if self._max_tokens is not None:
             payload["max_tokens"] = self._max_tokens
         if self._thinking_enabled:

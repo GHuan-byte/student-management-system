@@ -182,6 +182,171 @@ def test_authorization_header_uses_api_key(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 # ---------------------------------------------------------------------------
+# 2a.  Tools parameter support
+# ---------------------------------------------------------------------------
+
+
+def test_create_chat_completion_accepts_optional_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """create_chat_completion must accept an optional tools parameter."""
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "count_students",
+                "description": "统计学生总数",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+    ]
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(
+                messages=TEST_MESSAGES,
+                tools=tools,
+            )
+
+    _run_async(run())
+
+
+def test_tools_included_in_request_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When tools are provided, they must appear in the request JSON body."""
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "count_students",
+                "description": "统计学生总数",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+    ]
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(
+                messages=TEST_MESSAGES,
+                tools=tools,
+            )
+
+    _run_async(run())
+
+    body = json.loads(captured[0].content)
+    assert "tools" in body
+    assert body["tools"] == tools
+
+
+def test_tools_not_sent_when_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When tools=None, the tools field must NOT appear in the request body."""
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    _run_async(run())
+
+    body = json.loads(captured[0].content)
+    assert "tools" not in body
+
+
+def test_tools_not_modified_by_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The client must not modify the original tools list."""
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "count_students",
+                "description": "统计学生总数",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+    ]
+    original = [dict(t) for t in tools]
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(
+                messages=TEST_MESSAGES,
+                tools=tools,
+            )
+
+    _run_async(run())
+    assert tools == original
+
+
+# ===================================================================
+# 2b.  Existing tests must still pass with tools parameter
+# ===================================================================
+
+
+def test_sends_request_to_chat_completions_with_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With tools provided, request still goes to /chat/completions."""
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(
+                messages=TEST_MESSAGES,
+                tools=[],
+            )
+
+    _run_async(run())
+
+    assert len(captured) == 1
+    assert captured[0].url.path.endswith("/chat/completions")
+
+
+# ---------------------------------------------------------------------------
 # 3.  Parse normal text response
 # ---------------------------------------------------------------------------
 
