@@ -1834,3 +1834,361 @@ def test_multi_write_single_write_still_works() -> None:
         _run_async(run())
 
     assert adapter.invoke_count == 0
+
+
+# ===================================================================
+# 8. Unknown tool — safe structured result
+# ===================================================================
+
+UNKNOWN_TOOL_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "reasoning_content": "推理过程",
+    "tool_calls": [
+        {"id": "call_uk", "type": "function", "function": {
+            "name": "drop_database",
+            "arguments": "{}"}},
+    ],
+}
+UNKNOWN_TOOL_FINAL = {"content": "抱歉，我无法执行该操作。"}
+
+UNKNOWN_MIXED_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "count_students", "arguments": "{}"}},
+        {"id": "c2", "type": "function", "function": {
+            "name": "drop_database", "arguments": "{}"}},
+        {"id": "c3", "type": "function", "function": {
+            "name": "list_students", "arguments": '{"page": 1}'}},
+    ],
+}
+UNKNOWN_MIXED_FINAL = {"content": "已完成查询。"}
+
+
+def test_unknown_tool_does_not_crash() -> None:
+    """Unknown tool must not crash the service."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([UNKNOWN_TOOL_RESPONSE, UNKNOWN_TOOL_FINAL])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "删除数据库"}])
+
+    result = _run_async(run())
+    assert result["success"] is True
+
+
+def test_unknown_tool_not_invoked_on_adapter() -> None:
+    """Unknown tool must NOT call adapter.invoke_tool."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([UNKNOWN_TOOL_RESPONSE, UNKNOWN_TOOL_FINAL])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "删除数据库"}])
+
+    _run_async(run())
+    assert adapter.invoke_count == 0
+
+
+def test_unknown_tool_deepseek_called_twice() -> None:
+    """DeepSeek called twice: first for tool request, second for final."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([UNKNOWN_TOOL_RESPONSE, UNKNOWN_TOOL_FINAL])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "删除数据库"}])
+
+    _run_async(run())
+    assert deepseek.call_count == 2
+
+
+def test_unknown_tool_second_has_tool_result() -> None:
+    """Second round must contain a role=tool message."""
+    from app.services.ai_chat_service import AIChatService
+
+    class MsgCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([UNKNOWN_TOOL_RESPONSE, UNKNOWN_TOOL_FINAL])
+            self.captured: list[list[dict[str, Any]]] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.captured.append(list(messages))
+            return await super().create_chat_completion(messages)
+
+    deepseek = MsgCapture()
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "删除数据库"}])
+
+    _run_async(run())
+
+    second_msgs = deepseek.captured[1]
+    tool_msgs = [m for m in second_msgs if m["role"] == "tool"]
+    assert len(tool_msgs) == 1
+
+
+def test_unknown_tool_result_correct_id() -> None:
+    """Tool result must carry the original tool_call_id and name."""
+    from app.services.ai_chat_service import AIChatService
+
+    class MsgCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([UNKNOWN_TOOL_RESPONSE, UNKNOWN_TOOL_FINAL])
+            self.captured: list[list[dict[str, Any]]] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.captured.append(list(messages))
+            return await super().create_chat_completion(messages)
+
+    deepseek = MsgCapture()
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "删除数据库"}])
+
+    _run_async(run())
+
+    second_msgs = deepseek.captured[1]
+    tool_msg = next(m for m in second_msgs if m["role"] == "tool")
+    assert tool_msg["tool_call_id"] == "call_uk"
+    assert tool_msg["name"] == "drop_database"
+
+
+def test_unknown_tool_result_content_is_valid_json() -> None:
+    """Tool result content must be valid JSON with error info."""
+    from app.services.ai_chat_service import AIChatService
+
+    class MsgCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([UNKNOWN_TOOL_RESPONSE, UNKNOWN_TOOL_FINAL])
+            self.captured: list[list[dict[str, Any]]] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.captured.append(list(messages))
+            return await super().create_chat_completion(messages)
+
+    deepseek = MsgCapture()
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "删除数据库"}])
+
+    _run_async(run())
+
+    second_msgs = deepseek.captured[1]
+    tool_msg = next(m for m in second_msgs if m["role"] == "tool")
+    content = json.loads(tool_msg["content"])
+    assert content["success"] is False
+    assert content["error"]["code"] == "unknown_tool"
+
+
+def test_unknown_tool_result_no_sensitive_data() -> None:
+    """Tool result must not leak traceback, db path, session, or API Key."""
+    from app.services.ai_chat_service import AIChatService
+
+    class MsgCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([UNKNOWN_TOOL_RESPONSE, UNKNOWN_TOOL_FINAL])
+            self.captured: list[list[dict[str, Any]]] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.captured.append(list(messages))
+            return await super().create_chat_completion(messages)
+
+    deepseek = MsgCapture()
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "删除数据库"}])
+
+    _run_async(run())
+
+    second_msgs = deepseek.captured[1]
+    tool_msg = next(m for m in second_msgs if m["role"] == "tool")
+    content_str = tool_msg["content"]
+    assert "Traceback" not in content_str
+    assert "database" not in content_str.lower()
+    assert "session" not in content_str.lower()
+
+
+def test_unknown_mixed_read_unknown_read() -> None:
+    """read + unknown + read: reads execute, unknown skipped, order preserved."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([UNKNOWN_MIXED_RESPONSE, UNKNOWN_MIXED_FINAL])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+
+    assert adapter.invoke_count == 2
+    assert adapter.called_tools == ["count_students", "list_students"]
+
+
+def test_unknown_mixed_three_results_in_order() -> None:
+    """read + unknown + read produces three tool results in order."""
+    from app.services.ai_chat_service import AIChatService
+
+    class MsgCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([UNKNOWN_MIXED_RESPONSE, UNKNOWN_MIXED_FINAL])
+            self.captured: list[list[dict[str, Any]]] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.captured.append(list(messages))
+            return await super().create_chat_completion(messages)
+
+    deepseek = MsgCapture()
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+
+    second_msgs = deepseek.captured[1]
+    tool_msgs = [m for m in second_msgs if m["role"] == "tool"]
+    assert len(tool_msgs) == 3
+    assert tool_msgs[0]["tool_call_id"] == "c1"
+    assert tool_msgs[1]["tool_call_id"] == "c2"
+    assert tool_msgs[1]["name"] == "drop_database"
+    assert tool_msgs[2]["tool_call_id"] == "c3"
+
+
+def test_unknown_at_start_does_not_block_reads() -> None:
+    """Unknown tool in first position must not block subsequent tools."""
+    from app.services.ai_chat_service import AIChatService
+
+    first_pos: dict[str, Any] = {
+        "content": None,
+        "tool_calls": [
+            {"id": "c1", "type": "function", "function": {
+                "name": "drop_database", "arguments": "{}"}},
+            {"id": "c2", "type": "function", "function": {
+                "name": "count_students", "arguments": "{}"}},
+        ],
+    }
+
+    deepseek = FakeDeepSeekClient([first_pos, UNKNOWN_MIXED_FINAL])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+    assert adapter.invoke_count == 1
+    assert adapter.called_tools[0] == "count_students"
+
+
+def test_unknown_mixed_with_write_still_rejected() -> None:
+    """Unknown + write must still trigger write fail-closed."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    unknown_then_write: dict[str, Any] = {
+        "content": None,
+        "tool_calls": [
+            {"id": "c1", "type": "function", "function": {
+                "name": "drop_database", "arguments": "{}"}},
+            {"id": "c2", "type": "function", "function": {
+                "name": "add_student", "arguments": "{}"}},
+        ],
+    }
+
+    deepseek = FakeDeepSeekClient([unknown_then_write])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 0

@@ -21,7 +21,7 @@ from typing import Any, Callable
 from app.services.ai_errors import AIWriteConfirmationRequiredError
 
 # ---------------------------------------------------------------------------
-# Write tools that must NOT execute without user confirmation
+# Tool classification
 # ---------------------------------------------------------------------------
 
 WRITE_TOOL_NAMES: frozenset[str] = frozenset({
@@ -31,6 +31,16 @@ WRITE_TOOL_NAMES: frozenset[str] = frozenset({
     "delete_student",
     "batch_delete_students",
 })
+
+READ_TOOL_NAMES: frozenset[str] = frozenset({
+    "list_students",
+    "search_students",
+    "get_student_by_id",
+    "get_student_by_number",
+    "count_students",
+})
+
+KNOWN_TOOL_NAMES: frozenset[str] = READ_TOOL_NAMES | WRITE_TOOL_NAMES
 
 
 class AIChatService:
@@ -98,8 +108,18 @@ class AIChatService:
                 arguments = tc["function"]["arguments"]
                 tool_call_id = tc["id"]
 
-                # Execute read-only tool
-                tool_result = await adapter.invoke_tool(tool_name, arguments)
+                if tool_name not in KNOWN_TOOL_NAMES:
+                    # Unknown tool — return safe error without calling adapter
+                    tool_result = {
+                        "success": False,
+                        "error": {
+                            "code": "unknown_tool",
+                            "message": "请求的工具不可用",
+                        },
+                    }
+                else:
+                    # Execute known read-only tool
+                    tool_result = await adapter.invoke_tool(tool_name, arguments)
 
                 # Build tool result message
                 result_msg = self._build_tool_result_message(

@@ -149,8 +149,11 @@
 No MCP tool is executed and no partial action occurs.
 The final ai_multiple_write_actions response remains pending
 confirmation-token orchestration.
-- [ ] 2.6.7 RED: Test unknown tool — not executed, structured error returned
-- [ ] 2.6.8 RED: Test at most one Pending Action per response
+- [x] 2.6.7 RED: Test unknown tool — not executed, structured error returned
+- [x] 2.6.7a RED/GREEN: unknown tool returns safe Tool Result, no adapter call
+- [x] 2.6.7b RED/GREEN: read + unknown + read — reads execute, unknown skipped, order preserved
+- [x] 2.6.7c RED/GREEN: unknown + write still triggers write fail-closed
+- [x] 2.6.7d REFACTOR: KNOWN_TOOL_NAMES = READ_TOOL_NAMES | WRITE_TOOL_NAMES
 - [ ] 2.6.9 RED: Test multi-round Tool Loop
 - [ ] 2.6.10 RED: Test max tool rounds limit enforced
 - [ ] 2.6.11 RED: Test MCP tool error does not crash service
