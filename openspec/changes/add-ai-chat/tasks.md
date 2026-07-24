@@ -120,9 +120,18 @@
 
 ### 2.6 AI Chat Service (TDD: test_ai_chat_service.py)
 
-- [ ] 2.6.1 RED: Test normal Q&A returns text reply
-- [ ] 2.6.2 GREEN: Implement AIChatService with basic orchestration
-- [ ] 2.6.3 RED: Test single read tool call returns tool result in next reply
+- [x] 2.6.1 RED: Test normal Q&A returns text reply
+- [x] 2.6.2 GREEN: Implement AIChatService with basic orchestration
+- [x] 2.6.2a RED: Test single read tool call — tool executed, result fed back, final reply returned
+- [x] 2.6.2b GREEN: Implement single read tool call orchestration
+- [x] 2.6.2c RED/GREEN: Write tools fail-closed (AIWriteConfirmationRequiredError)
+- [x] 2.6.2d REFACTOR: Clean up AIChatService message building helpers
+- [x] 2.6.2e RED: Tools parameter not supported by DeepSeekClient — create_chat_completion missing `tools` kwarg
+- [x] 2.6.2f GREEN: Add `tools` parameter to DeepSeekClient.create_chat_completion and _build_payload
+- [x] 2.6.2g GREEN: Wire tools from adapter to both DeepSeek rounds in AIChatService
+- [x] 2.6.2h REFACTOR: FakeDeepSeekClient signature matches real client
+- [x] 2.6.3 RED: Test single read tool call returns tool result in next reply
+- [x] 2.6.3a RED/GREEN: Second round passes tools=None (no multi-round loop yet)
 - [ ] 2.6.4 RED: Test multiple read-only tool calls — all executed in order via same session
 - [ ] 2.6.5 RED: Test mixed read+write — read tools before first write execute, write generates Pending Action
 - [ ] 2.6.6 RED: Test multiple write tools — none execute, returns ai_multiple_write_actions

@@ -79,3 +79,9 @@ class AIConfirmationReplayError(AIClientError):
     """Raised when a confirmation token has already been consumed."""
     code = "ai_confirmation_replayed"
     safe_message = "确认请求已被使用，请重新发起"
+
+
+class AIWriteConfirmationRequiredError(AIClientError):
+    """Raised when the model requests a write tool without prior confirmation."""
+    code = "ai_write_confirmation_required"
+    safe_message = "该操作需要确认"
