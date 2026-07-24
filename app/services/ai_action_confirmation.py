@@ -13,6 +13,7 @@ short-lived, tamper-proof tokens that gate MCP write operations.
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from itsdangerous import URLSafeTimedSerializer
@@ -24,6 +25,7 @@ from app.services.ai_errors import (
     AIConfirmationInvalidError,
     AIConfirmationInvalidPayloadError,
     AIConfirmationNotConfiguredError,
+    AIConfirmationReplayError,
 )
 
 SALT = "ai-action-confirmation"
@@ -90,9 +92,29 @@ class AIActionConfirmation:
     The constructor validates the signing key and TTL immediately
     (fail-closed).  Token payload is a plain ``dict`` containing at
     minimum ``tool_name``, ``arguments``, and a unique ``action_id``.
+
+    **Thread safety**
+
+    ``consume_token`` uses an instance-level ``threading.Lock`` around the
+    consumed-action-id check-and-add, so it is safe for concurrent callers
+    within the same process.  The lock is *not* held during signature
+    verification or payload validation.
+
+    **Limitation**
+
+    The consumed-action-id set is per-process in-memory only.  It is lost
+    on application restart and is NOT shared across multiple worker processes
+    or server instances.  A production multi-worker deployment would need a
+    shared store (Redis, database unique constraint) for reliable replay
+    protection.
     """
 
-    __slots__ = ("_serializer", "_token_ttl")
+    __slots__ = (
+        "_serializer",
+        "_token_ttl",
+        "_consumed_action_ids",
+        "_lock",
+    )
 
     def __init__(self, secret_key: str, token_ttl_seconds: int) -> None:
         self._validate_config(secret_key, token_ttl_seconds)
@@ -101,6 +123,8 @@ class AIActionConfirmation:
             salt=SALT,
         )
         self._token_ttl = token_ttl_seconds
+        self._consumed_action_ids: set[str] = set()
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Public API
@@ -152,9 +176,53 @@ class AIActionConfirmation:
         except BadData:
             raise AIConfirmationInvalidError()
 
+    def consume_token(self, token: str) -> dict[str, object]:
+        """Verify, validate payload, atomically consume, and return the payload.
+
+        This is the only method that marks a token as consumed.  After a
+        successful call the same ``action_id`` (from any token) can never be
+        consumed again on this instance.
+
+        Args:
+            token: The token string returned by ``create_token``.
+
+        Returns:
+            A new dict with the verified payload data.
+
+        Raises:
+            AIConfirmationInvalidError: If the token is tampered or malformed.
+            AIConfirmationExpiredError: If the token has exceeded its TTL.
+            AIConfirmationInvalidPayloadError: If the payload structure, fields,
+                or ``action_id`` value is invalid.
+            AIConfirmationReplayError: If the ``action_id`` has already been
+                consumed.
+        """
+        payload = self.verify_token(token)
+        self._validate_action_id(payload)
+
+        action_id: str = payload["action_id"]  # guaranteed by validate
+
+        with self._lock:
+            if action_id in self._consumed_action_ids:
+                raise AIConfirmationReplayError()
+            self._consumed_action_ids.add(action_id)
+
+        return payload
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_action_id(payload: dict[str, object]) -> None:
+        """Validate that *payload* contains a non-empty string ``action_id``.
+
+        Raises:
+            AIConfirmationInvalidPayloadError: If validation fails.
+        """
+        action_id = payload.get("action_id")
+        if not isinstance(action_id, str) or not action_id.strip():
+            raise AIConfirmationInvalidPayloadError()
 
     @staticmethod
     def _validate_config(secret_key: str, token_ttl_seconds: int) -> None:

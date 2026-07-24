@@ -117,6 +117,19 @@ Concurrent safety:
 4. Two concurrent confirmation requests for the same token: at most one proceeds to MCP execution; the other gets `token_already_used`.
 5. `SECRET_KEY` validation: when `SECRET_KEY` is missing, empty, or still at the development default (`"dev-secret-change-in-production"`), write confirmation raises `ai_confirmation_not_configured`. The app starts, read-only chat works, but writes are `fail-closed`.
 
+**Memory boundary** — The consumed-action-id set is:
+
+- Per-instance (not shared across instances)
+- In-memory only (lost on application restart)
+- Not synchronized across multiple worker processes
+- Suitable for single-process development; production multi-worker deployments require Redis or a database unique constraint
+
+Rationale:
+- In-memory is sufficient for single-process development.
+- The set is small (only pending action IDs within their TTL window).
+- No automatic cleanup thread — entries persist until restart, which is safe because TTL-based expiration is already enforced by `URLSafeTimedSerializer`.
+- Multi-worker and distributed replay protection is out of scope for this phase.
+
 Rationale:
 - Thread lock prevents race conditions in Flask's default threaded mode.
 - Marking consumed before execution prevents the race where two confirmations both validate but then both execute.

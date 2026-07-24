@@ -73,3 +73,9 @@ class AIConfirmationInvalidPayloadError(AIClientError):
     forbidden fields."""
     code = "ai_confirmation_invalid_payload"
     safe_message = "确认请求数据无效"
+
+
+class AIConfirmationReplayError(AIClientError):
+    """Raised when a confirmation token has already been consumed."""
+    code = "ai_confirmation_replayed"
+    safe_message = "确认请求已被使用，请重新发起"

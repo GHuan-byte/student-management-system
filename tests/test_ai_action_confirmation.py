@@ -741,7 +741,376 @@ def test_expiry_error_distinct_from_payload_error() -> None:
 
 
 # ===================================================================
-# 12. No real .env access
+# 12. consume_token — sequential replay
+# ===================================================================
+
+SAMPLE_ACTION_PAYLOAD: dict[str, object] = {
+    "tool_name": "add_student",
+    "arguments": {"student_number": "0001", "name": "张三"},
+    "action_id": "action-uuid-for-test",
+}
+
+SAMPLE_ACTION_PAYLOAD_2: dict[str, object] = {
+    "tool_name": "delete_student",
+    "arguments": {"student_id": 42},
+    "action_id": "second-action-uuid",
+}
+
+
+def test_consume_token_first_call_returns_payload() -> None:
+    """First consume_token call must return the verified payload."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+
+    result = confirmation.consume_token(token)
+
+    assert result["tool_name"] == "add_student"
+    assert result["arguments"]["student_number"] == "0001"
+    assert result["action_id"] == "action-uuid-for-test"
+
+
+def test_consume_same_token_twice_raises_replay() -> None:
+    """Second consume_token of the same token must raise ReplayError."""
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationReplayError,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+
+    confirmation.consume_token(token)
+
+    with pytest.raises(AIConfirmationReplayError) as excinfo:
+        confirmation.consume_token(token)
+
+    assert excinfo.value.code == "ai_confirmation_replayed"
+    _assert_safe_message(excinfo.value)
+
+
+def test_different_tokens_same_action_id_second_rejected() -> None:
+    """Two tokens with the same action_id: first succeeds, second is replay."""
+    from itsdangerous import URLSafeTimedSerializer
+
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationReplayError,
+        SALT,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+
+    # Build two different tokens with the same action_id
+    payload_1 = {"tool_name": "add", "action_id": "shared-id"}
+    payload_2 = {"tool_name": "update", "action_id": "shared-id"}
+    token_1 = confirmation.create_token(payload_1)
+    token_2 = confirmation.create_token(payload_2)
+
+    confirmation.consume_token(token_1)
+
+    with pytest.raises(AIConfirmationReplayError):
+        confirmation.consume_token(token_2)
+
+
+def test_different_action_ids_both_succeed() -> None:
+    """Two tokens with different action_ids must both consume successfully."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+
+    token_1 = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+    token_2 = confirmation.create_token(SAMPLE_ACTION_PAYLOAD_2)
+
+    result_1 = confirmation.consume_token(token_1)
+    result_2 = confirmation.consume_token(token_2)
+
+    assert result_1["action_id"] == "action-uuid-for-test"
+    assert result_2["action_id"] == "second-action-uuid"
+
+
+def test_verify_token_does_not_consume() -> None:
+    """Multiple verify_token calls must NOT consume the token."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+
+    confirmation.verify_token(token)
+    confirmation.verify_token(token)
+    confirmation.verify_token(token)
+
+    # consume_token must still succeed
+    result = confirmation.consume_token(token)
+    assert result["action_id"] == "action-uuid-for-test"
+
+
+def test_verify_then_consume_works() -> None:
+    """Calling verify_token then consume_token must work."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+
+    verified = confirmation.verify_token(token)
+    consumed = confirmation.consume_token(token)
+
+    assert verified == consumed
+
+
+def test_consume_then_verify_still_works_but_consume_fails() -> None:
+    """After consume, verify_token still works but consume_token raises replay."""
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationReplayError,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+
+    confirmation.consume_token(token)
+
+    # verify_token must still succeed (it doesn't check consumption)
+    verified = confirmation.verify_token(token)
+    assert verified["action_id"] == "action-uuid-for-test"
+
+    # consume_token must now reject
+    with pytest.raises(AIConfirmationReplayError):
+        confirmation.consume_token(token)
+
+
+# ===================================================================
+# 13. consume_token — action_id validation
+# ===================================================================
+
+
+def test_missing_action_id_raises_invalid_payload() -> None:
+    """Payload without action_id must raise AIConfirmationInvalidPayloadError."""
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationInvalidPayloadError,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token({"tool_name": "test"})
+
+    with pytest.raises(AIConfirmationInvalidPayloadError) as excinfo:
+        confirmation.consume_token(token)
+
+    assert excinfo.value.code == "ai_confirmation_invalid_payload"
+    _assert_safe_message(excinfo.value)
+
+
+def test_empty_action_id_raises_invalid_payload() -> None:
+    """Empty string action_id must raise AIConfirmationInvalidPayloadError."""
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationInvalidPayloadError,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token({"tool_name": "test", "action_id": ""})
+
+    with pytest.raises(AIConfirmationInvalidPayloadError):
+        confirmation.consume_token(token)
+
+
+def test_whitespace_action_id_raises_invalid_payload() -> None:
+    """Whitespace-only action_id must raise AIConfirmationInvalidPayloadError."""
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationInvalidPayloadError,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token({"tool_name": "test", "action_id": "   "})
+
+    with pytest.raises(AIConfirmationInvalidPayloadError):
+        confirmation.consume_token(token)
+
+
+def test_non_string_action_id_raises_invalid_payload() -> None:
+    """Non-string action_id must raise AIConfirmationInvalidPayloadError."""
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationInvalidPayloadError,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token({"tool_name": "test", "action_id": 123})
+
+    with pytest.raises(AIConfirmationInvalidPayloadError):
+        confirmation.consume_token(token)
+
+
+# ===================================================================
+# 14. consume_token — concurrent replay
+# ===================================================================
+
+
+def test_concurrent_same_token_one_succeeds_one_replay() -> None:
+    """Two threads consuming the same token: exactly one succeeds, one replays."""
+    import threading
+
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationReplayError,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+
+    results: list[str] = []
+    results_lock = threading.Lock()
+    barrier = threading.Barrier(2, timeout=5)
+
+    def consumer() -> None:
+        try:
+            barrier.wait()
+            confirmation.consume_token(token)
+            with results_lock:
+                results.append("ok")
+        except AIConfirmationReplayError:
+            with results_lock:
+                results.append("replay")
+        except Exception as e:
+            with results_lock:
+                results.append(f"error: {e}")
+
+    threads = [threading.Thread(target=consumer) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+
+    assert len(results) == 2
+    assert sorted(results) == ["ok", "replay"]
+
+
+def test_concurrent_different_action_ids_all_succeed() -> None:
+    """Two threads consuming different action_ids must both succeed."""
+    import threading
+
+    from app.services.ai_action_confirmation import AIActionConfirmation
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+
+    token_1 = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+    token_2 = confirmation.create_token(SAMPLE_ACTION_PAYLOAD_2)
+
+    results: list[str] = []
+    results_lock = threading.Lock()
+    barrier = threading.Barrier(2, timeout=5)
+
+    def consumer(tok: str) -> None:
+        try:
+            barrier.wait()
+            confirmation.consume_token(tok)
+            with results_lock:
+                results.append("ok")
+        except Exception as e:
+            with results_lock:
+                results.append(f"error: {e}")
+
+    threads = [
+        threading.Thread(target=consumer, args=(token_1,)),
+        threading.Thread(target=consumer, args=(token_2,)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+
+    assert len(results) == 2
+    assert all(r == "ok" for r in results)
+
+
+# ===================================================================
+# 15. consume_token — failed write keeps token consumed
+# ===================================================================
+
+
+def test_write_failure_after_consume_token_remains_consumed() -> None:
+    """If a write operation fails after consume_token, the token must remain
+    consumed and not be reusable."""
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationReplayError,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+
+    # Simulate successful consume
+    payload = confirmation.consume_token(token)
+
+    # Simulate write failure
+    try:
+        raise RuntimeError("MCP write failed")
+    except RuntimeError:
+        pass
+
+    # Token must remain consumed despite the write failure
+    with pytest.raises(AIConfirmationReplayError):
+        confirmation.consume_token(token)
+
+    # payload must still be valid
+    assert payload["action_id"] == "action-uuid-for-test"
+
+
+# ===================================================================
+# 16. Error message safety for replay
+# ===================================================================
+
+
+def test_replay_error_safe_message() -> None:
+    """Replay error must not contain token, action_id, payload, or SECRET_KEY."""
+    from app.services.ai_action_confirmation import (
+        AIActionConfirmation,
+        AIConfirmationReplayError,
+    )
+
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    token = confirmation.create_token(SAMPLE_ACTION_PAYLOAD)
+
+    confirmation.consume_token(token)
+
+    with pytest.raises(AIConfirmationReplayError) as excinfo:
+        confirmation.consume_token(token)
+
+    msg = str(excinfo.value)
+    assert token not in msg
+    assert "action-uuid-for-test" not in msg
+    assert "张三" not in msg
+    assert SAFE_KEY not in msg
+    assert DEV_SECRET_KEY not in msg
+
+
+# ===================================================================
+# 17. Instance-level consumed set
+# ===================================================================
+
+
+def test_consumed_set_is_instance_level() -> None:
+    """Two independent instances must NOT share their consumed set."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+
+    conf_a = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+    conf_b = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
+
+    token = conf_a.create_token(SAMPLE_ACTION_PAYLOAD)
+
+    # Consume on conf_a
+    conf_a.consume_token(token)
+
+    # conf_b must be able to consume the same token (separate instance)
+    result = conf_b.consume_token(token)
+    assert result["action_id"] == "action-uuid-for-test"
+
+
+# ===================================================================
+# 18. No real .env access
 # ===================================================================
 
 

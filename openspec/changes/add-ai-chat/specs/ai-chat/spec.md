@@ -151,6 +151,42 @@ The system SHALL require explicit user confirmation before executing any write o
 - **THEN** `create_token` SHALL return a valid signed token
 - **AND** the original payload SHALL NOT be modified
 
+#### Scenario: consume_token returns payload on first call
+- **WHEN** `consume_token` is called with a valid, unexpired token
+- **THEN** it SHALL return the verified payload
+- **AND** the `action_id` SHALL be atomically marked as consumed
+
+#### Scenario: Same token consumed again raises replay
+- **WHEN** `consume_token` is called a second time with the same token
+- **THEN** it SHALL raise `AIConfirmationReplayError` (`ai_confirmation_replayed`)
+- **AND** the error SHALL NOT contain the token, action_id, payload, or SECRET_KEY
+
+#### Scenario: Two tokens sharing the same action_id — second is replay
+- **WHEN** two different tokens contain the same `action_id` and the first is consumed
+- **THEN** consuming the second SHALL raise `AIConfirmationReplayError`
+
+#### Scenario: verify_token does not consume
+- **WHEN** `verify_token` is called multiple times on the same token
+- **THEN** `consume_token` on that token SHALL still succeed
+
+#### Scenario: Concurrent consumption — at most one succeeds
+- **WHEN** two threads call `consume_token` with the same token concurrently
+- **THEN** at most one SHALL return the payload
+- **AND** the other SHALL receive `AIConfirmationReplayError`
+
+#### Scenario: consume_token rejects missing or invalid action_id
+- **WHEN** a payload has no `action_id`, an empty/whitespace `action_id`, or a non-string `action_id`
+- **THEN** `consume_token` SHALL raise `AIConfirmationInvalidPayloadError`
+
+#### Scenario: Write failure after consume — token remains consumed
+- **WHEN** `consume_token` succeeds but the subsequent MCP write fails
+- **THEN** the token SHALL remain marked as consumed
+- **AND** SHALL NOT be reusable
+
+#### Scenario: Consumed set is per-instance
+- **WHEN** two independent `AIActionConfirmation` instances exist
+- **THEN** consuming a token on one instance SHALL NOT affect the other
+
 #### Scenario: Confirmation summary for deletion shows targets
 - **WHEN** the pending action involves `delete_student` or `batch_delete_students`
 - **THEN** the summary SHALL include the operation type, target student ID or student number, and (for batch) the number of students to delete
