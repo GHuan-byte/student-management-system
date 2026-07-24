@@ -154,8 +154,10 @@ confirmation-token orchestration.
 - [x] 2.6.7b RED/GREEN: read + unknown + read — reads execute, unknown skipped, order preserved
 - [x] 2.6.7c RED/GREEN: unknown + write still triggers write fail-closed
 - [x] 2.6.7d REFACTOR: KNOWN_TOOL_NAMES = READ_TOOL_NAMES | WRITE_TOOL_NAMES
-- [ ] 2.6.9 RED: Test multi-round Tool Loop
-- [ ] 2.6.10 RED: Test max tool rounds limit enforced
+- [x] 2.6.9 RED: Test multi-round Tool Loop
+- [x] 2.6.9a–g: Multi-round sub-tasks
+- [x] 2.6.10 RED: Test max tool rounds limit enforced
+- [x] 2.6.10a–d: Max rounds sub-tasks
 - [ ] 2.6.11 RED: Test MCP tool error does not crash service
 - [ ] 2.6.12 RED: Test write tool returns pending action instead of executing
 - [ ] 2.6.13 RED: Test confirmed write executes exactly once

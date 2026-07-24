@@ -4,13 +4,13 @@ Each ``chat()`` call:
 1. Opens a request-level ``MCPToolAdapter`` context.
 2. Discovers MCP tools and passes them to DeepSeek as OpenAI-compatible
    function schemas.
-3. Calls ``DeepSeekClient.create_chat_completion()``.
-4. If the response contains ``tool_calls``:
-   a. Executes read-only tools via the same adapter.
-   b. Returns a controlled error for write tools.
-   c. Builds assistant + tool-result messages and calls DeepSeek again.
-   d. Returns the final text reply.
-5. If no tool_calls, returns the text reply directly.
+3. Enters a Tool Loop:
+   a. Calls ``DeepSeekClient.create_chat_completion()`` with tools.
+   b. If the response is plain text (no tool_calls), returns it.
+   c. Checks the tool round count against ``max_tool_rounds``.
+   d. Pre-scans for write tools — rejects the entire batch if found.
+   e. Executes or safely handles each tool in the batch.
+   f. Appends assistant + tool-result messages and loops.
 """
 
 from __future__ import annotations
@@ -18,7 +18,10 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from app.services.ai_errors import AIWriteConfirmationRequiredError
+from app.services.ai_errors import (
+    AIToolRoundLimitError,
+    AIWriteConfirmationRequiredError,
+)
 
 # ---------------------------------------------------------------------------
 # Tool classification
@@ -51,6 +54,7 @@ class AIChatService:
         service = AIChatService(
             deepseek_client_factory=lambda: DeepSeekClient(config),
             mcp_adapter_factory=lambda: MCPToolAdapter(database_path=...),
+            max_tool_rounds=5,
         )
         result = await service.chat(messages)
     """
@@ -59,9 +63,12 @@ class AIChatService:
         self,
         deepseek_client_factory: Callable[[], Any],
         mcp_adapter_factory: Callable[[], Any],
+        *,
+        max_tool_rounds: int = 5,
     ) -> None:
         self._deepseek_factory = deepseek_client_factory
         self._adapter_factory = mcp_adapter_factory
+        self._max_tool_rounds = max_tool_rounds
 
     async def chat(
         self,
@@ -77,62 +84,64 @@ class AIChatService:
         """
         deepseek = self._deepseek_factory()
 
+        # A copy so we never mutate the caller's list.
+        internal_messages = list(messages)
+
         async with self._adapter_factory() as adapter:
             await adapter.discover_tools()
             openai_tools = adapter.get_openai_tools()
 
-            # --- First DeepSeek call ---
-            response = await deepseek.create_chat_completion(
-                messages,
-                tools=openai_tools,
-            )
+            tool_rounds = 0
 
-            tool_calls = response.get("tool_calls")
-            if not tool_calls:
-                # Plain text response — no tools needed
-                return self._text_result(response)
-
-            # --- Tool execution round ---
-            # Pre-scan: if ANY tool is a write tool, reject the entire batch
-            # without executing anything (no partial execution).
-            tool_names = [tc["function"]["name"] for tc in tool_calls]
-            if any(name in WRITE_TOOL_NAMES for name in tool_names):
-                raise AIWriteConfirmationRequiredError()
-
-            # Build the assistant message with tool_calls + reasoning_content
-            assistant_msg = self._build_assistant_message(response)
-            updated_messages = list(messages) + [assistant_msg]
-
-            for tc in tool_calls:
-                tool_name = tc["function"]["name"]
-                arguments = tc["function"]["arguments"]
-                tool_call_id = tc["id"]
-
-                if tool_name not in KNOWN_TOOL_NAMES:
-                    # Unknown tool — return safe error without calling adapter
-                    tool_result = {
-                        "success": False,
-                        "error": {
-                            "code": "unknown_tool",
-                            "message": "请求的工具不可用",
-                        },
-                    }
-                else:
-                    # Execute known read-only tool
-                    tool_result = await adapter.invoke_tool(tool_name, arguments)
-
-                # Build tool result message
-                result_msg = self._build_tool_result_message(
-                    tool_call_id, tool_name, tool_result
+            while True:
+                response = await deepseek.create_chat_completion(
+                    internal_messages,
+                    tools=openai_tools,
                 )
-                updated_messages.append(result_msg)
 
-            # --- Second DeepSeek call (no tools — single tool round only) ---
-            final_response = await deepseek.create_chat_completion(
-                updated_messages,
-                tools=None,
-            )
-            return self._text_result(final_response)
+                tool_calls = response.get("tool_calls")
+                if not tool_calls:
+                    # Plain text response — done
+                    return self._text_result(response)
+
+                # --- Round-limit check (before executing this batch) ---
+                if tool_rounds >= self._max_tool_rounds:
+                    raise AIToolRoundLimitError()
+
+                tool_rounds += 1
+
+                # --- Pre-scan: reject any write tool in this batch ---
+                tool_names = [tc["function"]["name"] for tc in tool_calls]
+                if any(name in WRITE_TOOL_NAMES for name in tool_names):
+                    raise AIWriteConfirmationRequiredError()
+
+                # --- Build the assistant message ---
+                assistant_msg = self._build_assistant_message(response)
+                internal_messages.append(assistant_msg)
+
+                # --- Execute / handle each tool ---
+                for tc in tool_calls:
+                    tool_name = tc["function"]["name"]
+                    arguments = tc["function"]["arguments"]
+                    tool_call_id = tc["id"]
+
+                    if tool_name not in KNOWN_TOOL_NAMES:
+                        tool_result = {
+                            "success": False,
+                            "error": {
+                                "code": "unknown_tool",
+                                "message": "请求的工具不可用",
+                            },
+                        }
+                    else:
+                        tool_result = await adapter.invoke_tool(
+                            tool_name, arguments,
+                        )
+
+                    result_msg = self._build_tool_result_message(
+                        tool_call_id, tool_name, tool_result,
+                    )
+                    internal_messages.append(result_msg)
 
     # ------------------------------------------------------------------
     # Internal helpers

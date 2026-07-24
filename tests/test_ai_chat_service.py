@@ -397,9 +397,9 @@ def test_first_call_tools_are_adapter_openai_tools() -> None:
     assert actual_names == expected_names
 
 
-def test_tool_call_second_round_tools_is_none() -> None:
-    """Second DeepSeek call (after single tool result) must pass tools=None
-    since the Service only implements one round of tool execution."""
+def test_tool_call_second_round_still_receives_tools() -> None:
+    """Second DeepSeek call (after single tool result) must still receive
+    tools to support multi-round Tool Loop."""
     from app.services.ai_chat_service import AIChatService
 
     class ToolsCapturingFake(FakeDeepSeekClient):
@@ -430,10 +430,9 @@ def test_tool_call_second_round_tools_is_none() -> None:
     _run_async(run())
 
     assert len(deepseek.all_received_tools) == 2
-    # First round: tools must be passed to enable model to call them
+    # Both rounds must receive tools for the Tool Loop
     assert deepseek.all_received_tools[0] is not None
-    # Second round: tools=None — service only executes one tool round
-    assert deepseek.all_received_tools[1] is None
+    assert deepseek.all_received_tools[1] is not None
 
 
 def test_tool_call_second_round_messages_correct() -> None:
@@ -1225,8 +1224,8 @@ def test_multi_tool_results_order_matches_calls() -> None:
     assert ids == ["call_001", "call_002"]
 
 
-def test_multi_tool_second_round_has_no_tools() -> None:
-    """Second round must pass tools=None."""
+def test_multi_tool_second_round_receives_tools() -> None:
+    """Second round must still receive tools (Tool Loop)."""
     from app.services.ai_chat_service import AIChatService
 
     class ToolsCapture(FakeDeepSeekClient):
@@ -1257,7 +1256,7 @@ def test_multi_tool_second_round_has_no_tools() -> None:
     _run_async(run())
     assert len(deepseek.tools_list) == 2
     assert deepseek.tools_list[0] is not None
-    assert deepseek.tools_list[1] is None
+    assert deepseek.tools_list[1] is not None
 
 
 def test_multi_tool_final_reply() -> None:
@@ -2192,3 +2191,446 @@ def test_unknown_mixed_with_write_still_rejected() -> None:
         _run_async(run())
 
     assert adapter.invoke_count == 0
+
+
+# ===================================================================
+# 9. Multi-round Tool Loop
+# ===================================================================
+
+ROUND1_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "reasoning_content": "推理第一轮",
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "count_students", "arguments": "{}"}},
+    ],
+}
+
+ROUND2_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "reasoning_content": "推理第二轮",
+    "tool_calls": [
+        {"id": "c2", "type": "function", "function": {
+            "name": "search_students",
+            "arguments": '{"keyword": "计算机"}'}},
+    ],
+}
+
+FINAL_TEXT = {"content": "最终回答"}
+
+ROUND1_TWO_TOOLS: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "r1t1", "type": "function", "function": {
+            "name": "count_students", "arguments": "{}"}},
+        {"id": "r1t2", "type": "function", "function": {
+            "name": "list_students", "arguments": '{"page": 1}'}},
+    ],
+}
+
+
+def test_multi_round_three_calls_three_rounds() -> None:
+    """Three DeepSeek calls across two tool rounds + final text."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    result = _run_async(run())
+    assert deepseek.call_count == 3
+    assert result["reply"] == "最终回答"
+
+
+def test_multi_round_both_tools_executed() -> None:
+    """Both tool calls across rounds must be executed."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+    assert adapter.invoke_count == 2
+    assert adapter.called_tools == ["count_students", "search_students"]
+
+
+def test_multi_round_adapter_once() -> None:
+    """Adapter context must enter/exit/discover exactly once."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+    assert adapter.enter_count == 1
+    assert adapter.exit_count == 1
+    assert adapter.discover_count == 1
+
+
+def test_multi_round_each_round_receives_tools() -> None:
+    """Each round must receive tools (not None)."""
+    from app.services.ai_chat_service import AIChatService
+
+    class ToolsCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+            self.tools_list: list[Any] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.tools_list.append(tools)
+            return await super().create_chat_completion(messages)
+
+    deepseek = ToolsCapture()
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+    # All 3 calls must receive tools
+    assert all(t is not None for t in deepseek.tools_list)
+
+
+def test_multi_round_messages_contain_two_assistants() -> None:
+    """Messages must contain two assistant tool-call messages."""
+    from app.services.ai_chat_service import AIChatService
+
+    class MsgCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+            self.captured: list[list[dict[str, Any]]] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.captured.append(list(messages))
+            return await super().create_chat_completion(messages)
+
+    deepseek = MsgCapture()
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+
+    third_msgs = deepseek.captured[2]
+    assistant_msgs = [m for m in third_msgs if m["role"] == "assistant"]
+    tool_msgs = [m for m in third_msgs if m["role"] == "tool"]
+    assert len(assistant_msgs) == 2
+    assert len(tool_msgs) == 2
+
+
+def test_multi_round_reasoning_content_per_round() -> None:
+    """Each assistant message must carry its own reasoning_content."""
+    from app.services.ai_chat_service import AIChatService
+
+    class MsgCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+            self.captured: list[list[dict[str, Any]]] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.captured.append(list(messages))
+            return await super().create_chat_completion(messages)
+
+    deepseek = MsgCapture()
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+
+    third_msgs = deepseek.captured[2]
+    assistants = [m for m in third_msgs if m["role"] == "assistant"]
+    assert assistants[0].get("reasoning_content") == "推理第一轮"
+    assert assistants[1].get("reasoning_content") == "推理第二轮"
+
+
+def test_multi_round_final_no_reasoning() -> None:
+    """Final result must not contain reasoning_content."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    result = _run_async(run())
+    assert "reasoning_content" not in result
+
+
+# ===================================================================
+# 10. Same round multi-tool + next round tool
+# ===================================================================
+
+
+def test_multi_round_round1_two_tools_round2_one_tool() -> None:
+    """Round 1 has 2 tools, round 2 has 1 tool — all executed."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([ROUND1_TWO_TOOLS, ROUND2_RESPONSE, FINAL_TEXT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+    assert adapter.invoke_count == 3
+    assert adapter.called_tools == ["count_students", "list_students", "search_students"]
+
+
+def test_multi_round_unknown_then_read_next_round() -> None:
+    """Unknown in round 1, read in round 2 — both rounds handled."""
+    from app.services.ai_chat_service import AIChatService
+
+    unknown_round: dict[str, Any] = {
+        "content": None,
+        "tool_calls": [
+            {"id": "c1", "type": "function", "function": {
+                "name": "drop_database", "arguments": "{}"}},
+        ],
+    }
+
+    deepseek = FakeDeepSeekClient([unknown_round, ROUND2_RESPONSE, FINAL_TEXT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+    assert adapter.invoke_count == 1  # Only round 2 read tool
+    assert adapter.called_tools[0] == "search_students"
+
+
+# ===================================================================
+# 11. Write tool in later round
+# ===================================================================
+
+
+def test_multi_round_write_in_round2_rejected() -> None:
+    """Write tool in round 2: round 2 not executed, round 1 preserved."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    write_round: dict[str, Any] = {
+        "content": None,
+        "tool_calls": [
+            {"id": "c2", "type": "function", "function": {
+                "name": "add_student", "arguments": "{}"}},
+        ],
+    }
+
+    deepseek = FakeDeepSeekClient([ROUND1_RESPONSE, write_round])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 1
+    assert adapter.called_tools[0] == "count_students"
+
+
+# ===================================================================
+# 12. Maximum tool rounds
+# ===================================================================
+
+
+def test_max_rounds_1_first_ok_second_rejected() -> None:
+    """max_tool_rounds=1: first round ok, second raises limit error."""
+    from app.services.ai_chat_service import (
+        AIChatService,
+        AIToolRoundLimitError,
+    )
+
+    deepseek = FakeDeepSeekClient([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        max_tool_rounds=1,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    with pytest.raises(AIToolRoundLimitError) as excinfo:
+        _run_async(run())
+
+    assert excinfo.value.code == "ai_tool_round_limit"
+
+
+def test_max_rounds_1_first_tool_executed() -> None:
+    """With max_tool_rounds=1, the first round's tool is still executed."""
+    from app.services.ai_chat_service import AIChatService, AIToolRoundLimitError
+
+    deepseek = FakeDeepSeekClient([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        max_tool_rounds=1,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    with pytest.raises(AIToolRoundLimitError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 1
+
+
+def test_max_rounds_2_third_rejected() -> None:
+    """max_tool_rounds=2: two rounds ok, third raises limit."""
+    from app.services.ai_chat_service import (
+        AIChatService,
+        AIToolRoundLimitError,
+    )
+
+    third_round: dict[str, Any] = {
+        "content": None,
+        "tool_calls": [
+            {"id": "c3", "type": "function", "function": {
+                "name": "list_students", "arguments": "{}"}},
+        ],
+    }
+
+    deepseek = FakeDeepSeekClient([ROUND1_RESPONSE, ROUND2_RESPONSE, third_round])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        max_tool_rounds=2,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    with pytest.raises(AIToolRoundLimitError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 2
+
+
+def test_max_rounds_not_reached_with_text() -> None:
+    """Normal text reply before hitting max rounds is fine."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([TEXT_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        max_tool_rounds=1,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "有多少学生？"}])
+
+    result = _run_async(run())
+    assert result["success"] is True
+
+
+def test_max_rounds_adapter_cleaned_up() -> None:
+    """After limit error, adapter context must exit cleanly."""
+    from app.services.ai_chat_service import (
+        AIChatService,
+        AIToolRoundLimitError,
+    )
+
+    deepseek = FakeDeepSeekClient([ROUND1_RESPONSE, ROUND2_RESPONSE, FINAL_TEXT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        max_tool_rounds=1,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    with pytest.raises(AIToolRoundLimitError):
+        _run_async(run())
+
+    assert adapter.exit_count == 1
