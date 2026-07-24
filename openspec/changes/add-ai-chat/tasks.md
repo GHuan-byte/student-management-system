@@ -132,8 +132,17 @@
 - [x] 2.6.2h REFACTOR: FakeDeepSeekClient signature matches real client
 - [x] 2.6.3 RED: Test single read tool call returns tool result in next reply
 - [x] 2.6.3a RED/GREEN: Second round passes tools=None (no multi-round loop yet)
-- [ ] 2.6.4 RED: Test multiple read-only tool calls — all executed in order via same session
-- [ ] 2.6.5 RED: Test mixed read+write — read tools before first write execute, write generates Pending Action
+- [x] 2.6.4 RED: Test multiple read-only tool calls — all executed in order via same session
+- [x] 2.6.4a RED/GREEN: Two tool calls — both executed, correct names/args, two tool results
+- [x] 2.6.4b RED/GREEN: Business error in first tool does not block subsequent tools
+- [x] 2.6.4c RED/GREEN: MCP error in first tool does not block subsequent tools
+- [x] 2.6.4d REFACTOR: Single and multi-tool use same for-loop code path
+- [x] 2.6.5 RED: Test mixed read+write — no partial execution, pre-scan all tools
+- [x] 2.6.5a RED/GREEN: read → write — no tool executed
+- [x] 2.6.5b RED/GREEN: write → read — no tool executed
+- [x] 2.6.5c RED/GREEN: multiple reads + write — no tool executed
+- [x] 2.6.5d RED/GREEN: multiple writes — no tool executed
+- [x] 2.6.5e REFACTOR: Pre-scan tool_names before execution loop
 - [ ] 2.6.6 RED: Test multiple write tools — none execute, returns ai_multiple_write_actions
 - [ ] 2.6.7 RED: Test unknown tool — not executed, structured error returned
 - [ ] 2.6.8 RED: Test at most one Pending Action per response

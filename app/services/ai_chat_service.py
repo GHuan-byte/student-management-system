@@ -83,6 +83,12 @@ class AIChatService:
                 return self._text_result(response)
 
             # --- Tool execution round ---
+            # Pre-scan: if ANY tool is a write tool, reject the entire batch
+            # without executing anything (no partial execution).
+            tool_names = [tc["function"]["name"] for tc in tool_calls]
+            if any(name in WRITE_TOOL_NAMES for name in tool_names):
+                raise AIWriteConfirmationRequiredError()
+
             # Build the assistant message with tool_calls + reasoning_content
             assistant_msg = self._build_assistant_message(response)
             updated_messages = list(messages) + [assistant_msg]
@@ -91,10 +97,6 @@ class AIChatService:
                 tool_name = tc["function"]["name"]
                 arguments = tc["function"]["arguments"]
                 tool_call_id = tc["id"]
-
-                if tool_name in WRITE_TOOL_NAMES:
-                    # Fail-closed: write tools require confirmation (future)
-                    raise AIWriteConfirmationRequiredError()
 
                 # Execute read-only tool
                 tool_result = await adapter.invoke_tool(tool_name, arguments)
