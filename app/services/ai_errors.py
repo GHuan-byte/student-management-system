@@ -48,3 +48,28 @@ class AIInvalidResponseError(AIClientError):
 class AIUpstreamError(AIClientError):
     code = "ai_upstream_error"
     safe_message = "AI 服务连接失败，请稍后重试"
+
+
+class AIConfirmationNotConfiguredError(AIClientError):
+    """Raised when write confirmation cannot be enabled due to insecure config."""
+    code = "ai_confirmation_not_configured"
+    safe_message = "AI 写操作确认功能未正确配置"
+
+
+class AIConfirmationExpiredError(AIClientError):
+    """Raised when a confirmation token has expired."""
+    code = "ai_confirmation_expired"
+    safe_message = "确认请求已过期，请重新发起"
+
+
+class AIConfirmationInvalidError(AIClientError):
+    """Raised when a confirmation token is tampered, malformed, or invalid."""
+    code = "ai_confirmation_invalid"
+    safe_message = "确认请求无效，请重新发起"
+
+
+class AIConfirmationInvalidPayloadError(AIClientError):
+    """Raised when the confirmation token payload is invalid or contains
+    forbidden fields."""
+    code = "ai_confirmation_invalid_payload"
+    safe_message = "确认请求数据无效"

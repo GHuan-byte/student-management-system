@@ -208,6 +208,34 @@ Rationale:
 - The upstream API requires `thinking` as an object to distinguish between disabled thinking and the absence of thinking configuration.
 - A boolean `thinking: true/false` is not supported by the upstream contract.
 
+### D12. Confirmation token payload validation — no secrets in signed data
+
+`URLSafeTimedSerializer` provides integrity and signature verification but does **not** provide confidentiality. The token payload is Base64-encoded and signed — anyone who sees the token can decode it.
+
+Therefore the `AIActionConfirmation.create_token()` method enforces:
+
+1. Payload must be a `dict` — lists, strings, `None`, and numbers are rejected.
+2. Payload must not contain any of the following fields at any nesting depth (case-insensitive key matching):
+   - `api_key`
+   - `authorization`
+   - `authorization_header`
+   - `database_path`
+   - `mcp_session`
+   - `reasoning_content`
+3. Validation recurses into nested `dict` values and `list`/`tuple` elements.
+4. Non-dict payloads raise `AIConfirmationInvalidPayloadError` (`ai_confirmation_invalid_payload`).
+5. Forbidden-field payloads raise the same error.
+6. Error messages never contain the forbidden field names, their values, the `SECRET_KEY`, the token string, or any student data.
+
+**Rationale:**
+- The token is signed, not encrypted. Anyone with access to the token (network trace, browser dev tools, logs) can decode the Base64 payload.
+- Even though the browser is the only consumer in normal flow, the content is visible — secrets must never enter the payload.
+- Recursive case-insensitive checking ensures no secret field can slip through via nesting or casing variations.
+
+**Not in scope for this decision:**
+- Token consumption, replay protection, or `threading.Lock` — covered by D5.
+- The consumer of `verify_token()` (the confirm route) is responsible for extracting only the intended `tool_name` and `arguments` for execution — payload validation does not replace that check.
+
 Alternative considered: Omitting `thinking` entirely when disabled. Rejected because the upstream API requires explicit opt-out via `thinking.type=disabled`. Omitting the field leaves the behavior undefined.
 
 ### D12. reasoning_effort validation at config and client layers

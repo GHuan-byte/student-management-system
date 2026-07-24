@@ -90,18 +90,25 @@
 
 ### 2.5 AI Action Confirmation (TDD: test_ai_action_confirmation.py)
 
-- [ ] 2.5.1 RED: Test token creation and signing with itsdangerous
-- [ ] 2.5.2 GREEN: Implement AIActionConfirmation with URLSafeTimedSerializer
-- [ ] 2.5.3 RED: Test valid token verification returns original payload
-- [ ] 2.5.4 GREEN: Implement token verification
-- [ ] 2.5.5 RED: Test expired token returns structured error
-- [ ] 2.5.6 RED: Test tampered token returns structured error
+- [x] 2.5.1 RED: Test token creation and signing with itsdangerous
+- [x] 2.5.2 GREEN: Implement AIActionConfirmation with URLSafeTimedSerializer
+- [x] 2.5.3 RED: Test valid token verification returns original payload
+- [x] 2.5.4 GREEN: Implement token verification
+- [x] 2.5.5 RED: Test expired token returns structured error
+- [x] 2.5.6 RED: Test tampered token returns structured error
+- [x] 2.5.6a RED: Test invalid payload types return AIConfirmationInvalidPayloadError (list, str, None, int)
+- [x] 2.5.6b RED: Test forbidden fields rejected at any nesting depth (case-insensitive)
+- [x] 2.5.6c GREEN: Implement payload validation with FORBIDDEN_TOKEN_KEYS and recursive check
+- [x] 2.5.6d REFACTOR: Clean up payload validation under test coverage
+- [x] 2.5.6e RED: Test verify_token revalidates decoded payload (list, forbidden fields, nested)
+- [x] 2.5.6f GREEN: verify_token calls _validate_payload after successful signature verification
+- [x] 2.5.6g RED/GREEN: Non-JSON-serializable payload maps to AIConfirmationInvalidPayloadError
 - [ ] 2.5.7 RED: Test sequential replay — consumed token cannot be reused
 - [ ] 2.5.8 RED: Test concurrent replay — two confirmations for same token, at most one succeeds
 - [ ] 2.5.9 RED: Test thread safety — threading.Lock protects consumed-action tracking
 - [ ] 2.5.10 RED: Test MCP write tool failure — token remains consumed, not reusable
-- [ ] 2.5.11 RED: Test SECRET_KEY missing — write confirmation fail-closed (ai_confirmation_not_configured)
-- [ ] 2.5.12 RED: Test SECRET_KEY at development default — write confirmation fail-closed
+- [x] 2.5.11 RED: Test SECRET_KEY missing — write confirmation fail-closed (ai_confirmation_not_configured)
+- [x] 2.5.12 RED: Test SECRET_KEY at development default — write confirmation fail-closed
 - [ ] 2.5.13 RED: Test token not stored in sessionStorage
 - [ ] 2.5.14 GREEN: Implement all confirmation logic with thread safety
 - [ ] 2.5.15 REFACTOR: Clean up AIActionConfirmation

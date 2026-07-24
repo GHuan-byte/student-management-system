@@ -134,6 +134,23 @@ The system SHALL require explicit user confirmation before executing any write o
 - **THEN** the server SHALL NOT call any MCP write tool
 - **AND** the browser SHALL display "操作已取消"
 
+#### Scenario: Token payload rejects non-dict input
+- **WHEN** `create_token` is called with a payload that is not a `dict` (e.g., list, string, None, number)
+- **THEN** it SHALL raise `AIConfirmationInvalidPayloadError` with code `ai_confirmation_invalid_payload`
+- **AND** the error message SHALL NOT contain the payload value, SECRET_KEY, or token
+
+#### Scenario: Token payload rejects forbidden fields
+- **WHEN** a payload contains any of the forbidden fields (`api_key`, `authorization`, `authorization_header`, `database_path`, `mcp_session`, `reasoning_content`) at any nesting depth
+- **THEN** it SHALL raise `AIConfirmationInvalidPayloadError`
+- **AND** key matching SHALL be case-insensitive
+- **AND** the check SHALL recurse into nested dicts and list elements
+- **AND** the error message SHALL NOT contain the forbidden field name or value
+
+#### Scenario: Clean student payload succeeds
+- **WHEN** a payload contains only legitimate fields (`tool_name`, `arguments`, `action_id`)
+- **THEN** `create_token` SHALL return a valid signed token
+- **AND** the original payload SHALL NOT be modified
+
 #### Scenario: Confirmation summary for deletion shows targets
 - **WHEN** the pending action involves `delete_student` or `batch_delete_students`
 - **THEN** the summary SHALL include the operation type, target student ID or student number, and (for batch) the number of students to delete
