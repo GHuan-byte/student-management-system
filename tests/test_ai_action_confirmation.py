@@ -357,8 +357,13 @@ def test_tampered_token_raises_invalid() -> None:
     confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=120)
     token = confirmation.create_token({"tool_name": "test"})
 
-    # Modify the last character
-    tampered = token[:-1] + ("X" if token[-1] != "X" else "Y")
+    # Deterministic tampering: split off the signature and replace its
+    # first character.  This guarantees the signature changes regardless
+    # of Base64 encoding quirks.
+    token_body, signature = token.rsplit(".", 1)
+    replacement = "A" if signature[0] != "A" else "B"
+    tampered_signature = replacement + signature[1:]
+    tampered = f"{token_body}.{tampered_signature}"
 
     with pytest.raises(AIConfirmationInvalidError) as excinfo:
         confirmation.verify_token(tampered)
