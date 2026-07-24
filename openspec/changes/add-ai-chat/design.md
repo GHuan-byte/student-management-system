@@ -195,6 +195,39 @@ Rationale:
 - Some upstream models require `reasoning_content` to be echoed in subsequent requests for correct multi-turn behavior.
 - The `reasoning_content` is an internal protocol detail, not user-facing content.
 
+### D11. Thinking request uses object contract (not boolean)
+
+The `thinking` field in the Chat Completions request MUST be an object, not a boolean.
+
+- **Enabled**: `{"thinking": {"type": "enabled"}, "reasoning_effort": "high"}`
+- **Disabled**: `{"thinking": {"type": "disabled"}}`
+
+`reasoning_effort` is only sent when thinking is enabled. Allowed values are `high` and `max`. Disabled state explicitly sends `thinking.type=disabled` — the field is never omitted.
+
+Rationale:
+- The upstream API requires `thinking` as an object to distinguish between disabled thinking and the absence of thinking configuration.
+- A boolean `thinking: true/false` is not supported by the upstream contract.
+
+Alternative considered: Omitting `thinking` entirely when disabled. Rejected because the upstream API requires explicit opt-out via `thinking.type=disabled`. Omitting the field leaves the behavior undefined.
+
+### D12. reasoning_effort validation at config and client layers
+
+The allowed `reasoning_effort` values are `high` and `max` only. Validation occurs at two levels:
+
+**Config layer** (`app/config.py`):
+- When `DEEPSEEK_THINKING` is true, `AI_CONFIGURED` also requires `DEEPSEEK_REASONING_EFFORT` to be one of `{"high", "max"}`.
+- When `DEEPSEEK_REASONING_EFFORT` is missing, empty, or any value other than `high`/`max`, `AI_CONFIGURED` is `False`.
+- The allowed set is defined as a module-level constant (`ALLOWED_REASONING_EFFORTS`) importable by other modules.
+
+**Client layer** (`app/services/deepseek_client.py`):
+- `DeepSeekClient._build_payload` checks `_reasoning_effort` against the allowed set when `_thinking_enabled`.
+- If `_reasoning_effort` is not in `{"high", "max"}`, the client raises a configuration error and does NOT send an HTTP request.
+- When `_thinking_enabled` is `False`, `_reasoning_effort` is ignored entirely — any value is accepted but never sent upstream.
+
+Rationale:
+- Dual-layer validation ensures that even if the config layer is bypassed (e.g., direct client construction with raw config), invalid effort values never reach the upstream API.
+- The config layer presents a unified `AI_CONFIGURED` state to the application, so routes can make a single check.
+
 ## Risks / Trade-offs
 
 - [MCP session lifecycle in Flask sync handlers] → The `MCPToolAdapter` must manage async MCP sessions inside Flask's sync request handlers. Mitigation: use `asyncio.run()` to drive the async MCP session for the duration of the request, terminating cleanly before the response.

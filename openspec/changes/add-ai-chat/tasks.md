@@ -54,15 +54,18 @@
 - [x] 2.3.11 RED: Test other httpx errors map to ai_upstream_error
 - [x] 2.3.12a RED: Error message does not contain API Key, Authorization header, or user message
 - [ ] 2.3.12 RED: Test httpx raw exceptions not exposed to browser (requires Route layer)
-- [ ] 2.3.13 RED: Test automatic retry is NOT implemented
-- [ ] 2.3.14 RED: Test thinking enabled — sends reasoning_effort from DEEPSEEK_REASONING_EFFORT
-- [ ] 2.3.15 RED: Test thinking disabled — no reasoning parameters sent
-- [ ] 2.3.16 RED: Test reasoning_content extracted for internal use, not in response
+- [ ] 2.3.13 RED: Test automatic retry is NOT implemented (Not implemented by design)
+- [x] 2.3.14 RED: Test thinking enabled — sends reasoning_effort from DEEPSEEK_REASONING_EFFORT
+- [x] 2.3.15 RED: Test thinking disabled — no reasoning parameters sent
+- [x] 2.3.16 RED: Test reasoning_content extracted for internal use, not in response
+- [~] 2.3.14–2.3.16 correction: thinking object contract (thinking={type:enabled/disabled}) — Implementation and tests completed; no separate RED evidence captured for this delta correction
 - [x] 2.3.17 RED: Test API Base from env, no hardcoded default
 - [x] 2.3.18 RED: Test Model from env, no hardcoded default
 - [x] 2.3.19 RED: Test API Key in Bearer header, not in logs/exception text/return values
 - [x] 2.3.20 RED: Test MockTransport used in default tests, no real network
-- [ ] 2.3.21 GREEN: Implement all error handling, thinking mode, and dependency injection
+- [x] 2.3.21 GREEN: Implement all error handling, thinking mode, reasoning_effort validation, and dependency injection (thinking implemented; error handling complete; reasoning_effort validated; pending 2.3.12 browser leak check)
+- [x] 2.3.21a RED: reasoning_effort high/max valid, medium/low/missing → invalid, client refuses request
+- [x] 2.3.21b GREEN: _validate_reasoning_effort() in client + _compute_ai_configured() in config
 - [x] 2.3.22 REFACTOR: Clean up DeepSeekClient under test coverage
 
 ### 2.4 MCP Tool Adapter (TDD: test_mcp_tool_adapter.py)

@@ -97,7 +97,7 @@ def test_all_ai_env_vars_read_correctly(monkeypatch: pytest.MonkeyPatch) -> None
         "DEEPSEEK_TIMEOUT_SECONDS": "30",
         "DEEPSEEK_MAX_OUTPUT_TOKENS": "4096",
         "DEEPSEEK_THINKING": "true",
-        "DEEPSEEK_REASONING_EFFORT": "medium",
+        "DEEPSEEK_REASONING_EFFORT": "high",
         "AI_MAX_TOOL_ROUNDS": "10",
         "AI_MAX_HISTORY_MESSAGES": "20",
         "AI_MAX_MESSAGE_LENGTH": "4000",
@@ -111,7 +111,7 @@ def test_all_ai_env_vars_read_correctly(monkeypatch: pytest.MonkeyPatch) -> None
     assert cfg["DEEPSEEK_TIMEOUT_SECONDS"] == 30
     assert cfg["DEEPSEEK_MAX_OUTPUT_TOKENS"] == 4096
     assert cfg["DEEPSEEK_THINKING"] is True
-    assert cfg["DEEPSEEK_REASONING_EFFORT"] == "medium"
+    assert cfg["DEEPSEEK_REASONING_EFFORT"] == "high"
     assert cfg["AI_MAX_TOOL_ROUNDS"] == 10
     assert cfg["AI_MAX_HISTORY_MESSAGES"] == 20
     assert cfg["AI_MAX_MESSAGE_LENGTH"] == 4000
@@ -414,6 +414,67 @@ def test_missing_secret_key_marks_write_confirmation_unavailable(monkeypatch: py
 
 
 # ---------------------------------------------------------------------------
+# 15.  reasoning_effort validation
+# ---------------------------------------------------------------------------
+
+
+def _reasoning_config(
+    monkeypatch: pytest.MonkeyPatch,
+    effort: str | None,
+    thinking: bool = True,
+) -> dict:
+    """Build config with specified reasoning_effort and thinking."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", SAFE_FAKE_KEY)
+    monkeypatch.setenv("DEEPSEEK_API_BASE", SAFE_FAKE_BASE)
+    monkeypatch.setenv("DEEPSEEK_MODEL", SAFE_FAKE_MODEL)
+    monkeypatch.setenv("DEEPSEEK_THINKING", "true" if thinking else "false")
+    if effort is not None:
+        monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", effort)
+    else:
+        monkeypatch.delenv("DEEPSEEK_REASONING_EFFORT", raising=False)
+    return _build_config_from_env(monkeypatch, {})
+
+
+def test_reasoning_high_is_valid(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = _reasoning_config(monkeypatch, "high")
+    assert cfg["AI_CONFIGURED"] is True
+
+
+def test_reasoning_max_is_valid(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = _reasoning_config(monkeypatch, "max")
+    assert cfg["AI_CONFIGURED"] is True
+
+
+def test_reasoning_medium_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = _reasoning_config(monkeypatch, "medium")
+    assert cfg["AI_CONFIGURED"] is False
+
+
+def test_reasoning_low_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = _reasoning_config(monkeypatch, "low")
+    assert cfg["AI_CONFIGURED"] is False
+
+
+def test_reasoning_arbitrary_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = _reasoning_config(monkeypatch, "arbitrary")
+    assert cfg["AI_CONFIGURED"] is False
+
+
+def test_reasoning_missing_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = _reasoning_config(monkeypatch, None)
+    assert cfg["AI_CONFIGURED"] is False
+
+
+def test_reasoning_illegal_ignored_when_thinking_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When thinking is disabled, invalid reasoning_effort must not affect configuration."""
+    cfg = _reasoning_config(monkeypatch, "medium", thinking=False)
+    assert cfg["AI_CONFIGURED"] is True
+    assert cfg["DEEPSEEK_THINKING"] is False
+
+
+# ---------------------------------------------------------------------------
 # 12.  Flask app creates even when AI config is missing
 # ---------------------------------------------------------------------------
 
@@ -467,7 +528,7 @@ def test_flask_app_creates_with_all_ai_config(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("DEEPSEEK_TIMEOUT_SECONDS", "30")
     monkeypatch.setenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "4096")
     monkeypatch.setenv("DEEPSEEK_THINKING", "true")
-    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "medium")
+    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", "high")
     monkeypatch.setenv("AI_MAX_TOOL_ROUNDS", "10")
     monkeypatch.setenv("AI_MAX_HISTORY_MESSAGES", "20")
     monkeypatch.setenv("AI_MAX_MESSAGE_LENGTH", "4000")

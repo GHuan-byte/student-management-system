@@ -19,6 +19,12 @@ class AIClientError(Exception):
         self.message = msg
 
 
+class AINotConfiguredError(AIClientError):
+    """Raised when AI Chat configuration is incomplete or invalid."""
+    code = "ai_not_configured"
+    safe_message = "AI 服务配置不完整，请检查环境变量"
+
+
 class AITimeoutError(AIClientError):
     code = "ai_timeout"
     safe_message = "AI 请求超时，请稍后重试"

@@ -327,11 +327,35 @@ The system SHALL provide a `DeepSeekClient` that uses `httpx` as its only HTTP l
 - **THEN** the client SHALL NOT automatically retry the request
 - **AND** it SHALL return the appropriate error code
 
-#### Scenario: Thinking mode is controlled by env var
-- **WHEN** `DEEPSEEK_THINKING` is true
-- **THEN** the client SHALL include `reasoning_effort` from `DEEPSEEK_REASONING_EFFORT` in the request
+#### Scenario: Thinking enabled sends thinking object with type enabled
+- **WHEN** `DEEPSEEK_THINKING` is true and `DEEPSEEK_REASONING_EFFORT` is `high`
+- **THEN** the request SHALL include `thinking` as `{"type": "enabled"}` and `reasoning_effort` as `"high"`
+- **AND** `thinking` SHALL NOT be a boolean value
+
+#### Scenario: Thinking enabled with max effort is valid
+- **WHEN** `DEEPSEEK_THINKING` is true and `DEEPSEEK_REASONING_EFFORT` is `max`
+- **THEN** the request SHALL include `reasoning_effort` as `"max"`
+
+#### Scenario: Thinking enabled with missing effort is not configured
+- **WHEN** `DEEPSEEK_THINKING` is true and `DEEPSEEK_REASONING_EFFORT` is not set
+- **THEN** the configuration SHALL be considered invalid
+- **AND** `AI_CONFIGURED` SHALL be `False`
+- **AND** DeepSeekClient SHALL NOT send an HTTP request
+
+#### Scenario: Thinking enabled with invalid effort is not configured
+- **WHEN** `DEEPSEEK_THINKING` is true and `DEEPSEEK_REASONING_EFFORT` is set to `medium`, `low`, or any value other than `high` or `max`
+- **THEN** the configuration SHALL be considered invalid
+- **AND** `AI_CONFIGURED` SHALL be `False`
+- **AND** DeepSeekClient SHALL NOT send an HTTP request
+- **AND** the invalid value SHALL NOT be sent to the upstream API
+
+#### Scenario: Thinking disabled sends thinking object with type disabled
 - **WHEN** `DEEPSEEK_THINKING` is false or unset
-- **THEN** the client SHALL NOT send reasoning-related parameters
+- **THEN** the request SHALL include `thinking` as an object: `{"type": "disabled"}`
+- **AND** the request SHALL NOT include `reasoning_effort`
+- **AND** `thinking` SHALL NOT be omitted from the request
+- **AND** `thinking` SHALL NOT be a boolean value
+- **AND** any value of `DEEPSEEK_REASONING_EFFORT` SHALL be ignored
 
 #### Scenario: reasoning_content is extracted for internal use only
 - **WHEN** the upstream returns `reasoning_content`
@@ -470,11 +494,19 @@ The `reasoning_content` field returned by the upstream API SHALL be handled serv
 - **AND** it SHALL NOT be stored in sessionStorage
 - **AND** it SHALL NOT appear in HTML, JavaScript, or logs
 
-#### Scenario: Thinking is controlled by environment
+#### Scenario: Thinking enabled sends thinking.type=enabled
 - **WHEN** `DEEPSEEK_THINKING` is set to a truthy value
-- **THEN** the client SHALL configure the request to enable thinking
+- **THEN** the request SHALL include `thinking` as `{"type": "enabled"}`
+- **AND** it SHALL include `reasoning_effort` with a value from the approved set (`high`, `max`)
+- **AND** `thinking` SHALL NOT be a boolean
+- **AND** `thinking` SHALL NOT be omitted
+
+#### Scenario: Thinking disabled sends thinking.type=disabled
 - **WHEN** `DEEPSEEK_THINKING` is not set or is falsy
-- **THEN** the client SHALL NOT send thinking-related parameters
+- **THEN** the request SHALL include `thinking` as `{"type": "disabled"}`
+- **AND** it SHALL NOT include `reasoning_effort`
+- **AND** `thinking` SHALL NOT be omitted
+- **AND** `thinking` SHALL NOT be a boolean
 
 #### Scenario: reasoning_content is passed through in Tool Loop rounds
 - **WHEN** `DEEPSEEK_THINKING` is enabled and the upstream assistant message contains both `tool_calls` and `reasoning_content`

@@ -38,6 +38,8 @@ AI_BOOL_VARS = (
     "DEEPSEEK_TRUST_ENV",
 )
 
+ALLOWED_REASONING_EFFORTS = frozenset({"high", "max"})
+
 
 # ---------------------------------------------------------------------------
 # AI env‑var parsing helpers
@@ -79,6 +81,25 @@ def _is_secret_key_safe(secret_key: str | None) -> bool:
     return secret_key not in INSECURE_SECRET_KEYS
 
 
+def _compute_ai_configured(cfg: dict[str, Any]) -> bool:
+    """Determine whether AI Chat is fully configured.
+
+    Requires:
+    - All ``DEEPSEEK_REQUIRED_VARS`` set truthy.
+    - If ``DEEPSEEK_THINKING`` is enabled, ``DEEPSEEK_REASONING_EFFORT``
+      must be one of ``ALLOWED_REASONING_EFFORTS``.
+    """
+    if not all(cfg.get(var) for var in DEEPSEEK_REQUIRED_VARS):
+        return False
+
+    if cfg.get("DEEPSEEK_THINKING"):
+        effort = cfg.get("DEEPSEEK_REASONING_EFFORT")
+        if not effort or effort not in ALLOWED_REASONING_EFFORTS:
+            return False
+
+    return True
+
+
 def _build_ai_config() -> dict[str, Any]:
     """Read all AI‑related configuration from the environment.
 
@@ -96,7 +117,8 @@ def _build_ai_config() -> dict[str, Any]:
         cfg[var] = _parse_bool_env(var)
 
     # AI_CONFIGURED is True only when all required DeepSeek vars are set
-    cfg["AI_CONFIGURED"] = all(cfg.get(var) for var in DEEPSEEK_REQUIRED_VARS)
+    # When thinking is enabled, reasoning_effort must also be valid.
+    cfg["AI_CONFIGURED"] = _compute_ai_configured(cfg)
 
     # AI_WRITE_CONFIRMATION depends only on SECRET_KEY safety
     raw_secret = os.environ.get("SECRET_KEY")

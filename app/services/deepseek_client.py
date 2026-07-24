@@ -6,9 +6,11 @@ from typing import Any
 
 import httpx
 
+from app.config import ALLOWED_REASONING_EFFORTS
 from app.services.ai_errors import (
     AIAuthError,
     AIInvalidResponseError,
+    AINotConfiguredError,
     AIRateLimitedError,
     AITimeoutError,
     AIUpstreamError,
@@ -39,6 +41,8 @@ class DeepSeekClient:
         )
         self._model: str = config.get("DEEPSEEK_MODEL") or ""
         self._max_tokens: int | None = config.get("DEEPSEEK_MAX_OUTPUT_TOKENS")
+        self._thinking_enabled: bool = bool(config.get("DEEPSEEK_THINKING", False))
+        self._reasoning_effort: str | None = config.get("DEEPSEEK_REASONING_EFFORT")
         self._timeout: float = float(
             config.get("DEEPSEEK_TIMEOUT_SECONDS") or 30
         )
@@ -70,6 +74,9 @@ class DeepSeekClient:
         ``function.name``, ``function.arguments`` as a JSON string).
 
         Raises:
+            AINotConfiguredError: When thinking is enabled but
+                ``reasoning_effort`` is missing or not in the allowed set
+                (``high``, ``max``).
             AITimeoutError: When the upstream request times out
                 (``httpx.ReadTimeout``, ``httpx.ConnectTimeout``).
             AIAuthError: When the upstream returns 401 or 403.
@@ -82,13 +89,7 @@ class DeepSeekClient:
                 (``httpx.ConnectError``, ``httpx.ProxyError``, etc.)
                 or the upstream returns a 5xx status.
         """
-        payload: dict[str, Any] = {
-            "model": self._model,
-            "messages": messages,
-        }
-        if self._max_tokens is not None:
-            payload["max_tokens"] = self._max_tokens
-
+        payload = self._build_payload(messages)
         url = f"{self._api_base}{CHAT_COMPLETIONS_PATH}"
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -120,6 +121,30 @@ class DeepSeekClient:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _build_payload(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        """Construct the request JSON body, including thinking params if enabled."""
+        if self._thinking_enabled:
+            self._validate_reasoning_effort()
+
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+        }
+        if self._max_tokens is not None:
+            payload["max_tokens"] = self._max_tokens
+        if self._thinking_enabled:
+            payload["thinking"] = {"type": "enabled"}
+            if self._reasoning_effort:
+                payload["reasoning_effort"] = self._reasoning_effort
+        else:
+            payload["thinking"] = {"type": "disabled"}
+        return payload
+
+    def _validate_reasoning_effort(self) -> None:
+        """Raise if reasoning_effort is missing or not in the allowed set."""
+        if not self._reasoning_effort or self._reasoning_effort not in ALLOWED_REASONING_EFFORTS:
+            raise AINotConfiguredError()
 
     @staticmethod
     def _normalize_api_base(base: str) -> str:
@@ -156,11 +181,19 @@ class DeepSeekClient:
         if not isinstance(message, dict):
             raise AIInvalidResponseError()
 
+        result: dict[str, Any] = {}
+
+        if "reasoning_content" in message:
+            result["reasoning_content"] = message["reasoning_content"]
+
         if "tool_calls" in message:
-            return {"content": message.get("content"), "tool_calls": message["tool_calls"]}
+            result["content"] = message.get("content")
+            result["tool_calls"] = message["tool_calls"]
+            return result
 
         if "content" in message:
-            return {"content": message["content"]}
+            result["content"] = message["content"]
+            return result
 
         raise AIInvalidResponseError()
 

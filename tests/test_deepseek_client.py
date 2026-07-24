@@ -909,6 +909,379 @@ def test_invalid_response_safe_message(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 10.  Thinking and reasoning_content
+# ---------------------------------------------------------------------------
+
+
+def _make_thinking_config(
+    monkeypatch: pytest.MonkeyPatch,
+    thinking: bool,
+    reasoning_effort: str = "high",
+) -> dict[str, Any]:
+    """Build config with specific thinking settings."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", TEST_API_KEY)
+    monkeypatch.setenv("DEEPSEEK_API_BASE", TEST_API_BASE)
+    monkeypatch.setenv("DEEPSEEK_MODEL", TEST_MODEL)
+    monkeypatch.setenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "4096")
+    monkeypatch.setenv("DEEPSEEK_TIMEOUT_SECONDS", "30")
+    monkeypatch.setenv("DEEPSEEK_TRUST_ENV", "false")
+    monkeypatch.setenv("DEEPSEEK_THINKING", "true" if thinking else "false")
+    monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", reasoning_effort)
+    return create_config("testing").to_mapping()
+
+
+def test_thinking_disabled_sends_type_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_thinking_config(monkeypatch, thinking=False)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    _run_async(run())
+
+    body = json.loads(captured[0].content)
+    assert body["thinking"] == {"type": "disabled"}
+    assert not isinstance(body["thinking"], bool), "thinking must be an object, not a bool"
+
+
+def test_thinking_disabled_no_reasoning_effort(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_thinking_config(monkeypatch, thinking=False)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    _run_async(run())
+
+    body = json.loads(captured[0].content)
+    assert "reasoning_effort" not in body
+    assert body["thinking"] == {"type": "disabled"}
+
+
+def test_thinking_enabled_sends_type_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_thinking_config(monkeypatch, thinking=True, reasoning_effort="high")
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    _run_async(run())
+
+    body = json.loads(captured[0].content)
+    assert body["thinking"] == {"type": "enabled"}
+    assert not isinstance(body["thinking"], bool), "thinking must be an object, not a bool"
+    assert body.get("reasoning_effort") == "high"
+
+
+def test_reasoning_effort_comes_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_thinking_config(monkeypatch, thinking=True, reasoning_effort="max")
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    _run_async(run())
+
+    body = json.loads(captured[0].content)
+    assert body["reasoning_effort"] == "max"
+    assert body["thinking"] == {"type": "enabled"}
+
+
+def test_reasoning_content_parsed_from_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "Here's my answer",
+                    "reasoning_content": "I need to think step by step",
+                }
+            }]
+        })
+
+    transport = httpx.MockTransport(handler)
+    config = _make_thinking_config(monkeypatch, thinking=True)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> dict[str, Any]:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            return await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    result = _run_async(run())
+
+    assert result["content"] == "Here's my answer"
+    assert result["reasoning_content"] == "I need to think step by step"
+
+
+def test_regular_text_without_reasoning_still_works(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_ok_response(content="plain answer"))
+
+    transport = httpx.MockTransport(handler)
+    config = _make_thinking_config(monkeypatch, thinking=True)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> dict[str, Any]:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            return await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    result = _run_async(run())
+
+    assert result["content"] == "plain answer"
+    assert "reasoning_content" not in result
+
+
+def test_tool_calls_with_reasoning_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "reasoning_content": "internal reasoning",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "count_students", "arguments": "{}"},
+                        }
+                    ],
+                }
+            }]
+        })
+
+    transport = httpx.MockTransport(handler)
+    config = _make_thinking_config(monkeypatch, thinking=True)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> dict[str, Any]:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            return await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    result = _run_async(run())
+
+    assert result["content"] is None
+    assert len(result["tool_calls"]) == 1
+    assert result["reasoning_content"] == "internal reasoning"
+
+
+def test_messages_preserve_reasoning_content_in_next_round(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When a caller passes assistant messages with reasoning_content,
+    the request JSON must include it verbatim."""
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=_ok_response(content="done"))
+
+    transport = httpx.MockTransport(handler)
+    config = _make_thinking_config(monkeypatch, thinking=True)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    multi_turn_messages: list[dict[str, Any]] = [
+        {"role": "user", "content": "How many students?"},
+        {
+            "role": "assistant",
+            "content": None,
+            "reasoning_content": "internal reasoning",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "count_students", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "42"},
+    ]
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=multi_turn_messages)
+
+    _run_async(run())
+
+    body = json.loads(captured[0].content)
+    sent_messages = body["messages"]
+    assistant_msg = sent_messages[1]
+    assert assistant_msg["role"] == "assistant"
+    assert assistant_msg["reasoning_content"] == "internal reasoning"
+    assert assistant_msg["tool_calls"][0]["function"]["name"] == "count_students"
+    assert assistant_msg["content"] is None
+
+
+def test_reasoning_content_not_in_error_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If an error occurs, reasoning_content must not leak into the error string."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection failed", request=request)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_thinking_config(monkeypatch, thinking=True)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIUpstreamError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIUpstreamError) as exc_info:
+        _run_async(run())
+
+    err_str = str(exc_info.value)
+    assert "internal" not in err_str, "reasoning_content leaked into error"
+    assert TEST_API_KEY not in err_str
+
+
+# ---------------------------------------------------------------------------
+# 11.  Client-level reasoning_effort defense
+# ---------------------------------------------------------------------------
+
+
+def _make_effort_config(
+    monkeypatch: pytest.MonkeyPatch,
+    effort: str | None,
+    thinking: bool = True,
+) -> dict[str, Any]:
+    """Build config with specific effort value, default model/base/key."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", TEST_API_KEY)
+    monkeypatch.setenv("DEEPSEEK_API_BASE", TEST_API_BASE)
+    monkeypatch.setenv("DEEPSEEK_MODEL", TEST_MODEL)
+    monkeypatch.setenv("DEEPSEEK_MAX_OUTPUT_TOKENS", "4096")
+    monkeypatch.setenv("DEEPSEEK_TIMEOUT_SECONDS", "30")
+    monkeypatch.setenv("DEEPSEEK_TRUST_ENV", "false")
+    monkeypatch.setenv("DEEPSEEK_THINKING", "true" if thinking else "false")
+    if effort is not None:
+        monkeypatch.setenv("DEEPSEEK_REASONING_EFFORT", effort)
+    else:
+        monkeypatch.delenv("DEEPSEEK_REASONING_EFFORT", raising=False)
+    return create_config("testing").to_mapping()
+
+
+def test_thinking_enabled_medium_does_not_send_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid reasoning_effort must prevent any HTTP request."""
+    handler_called = False
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal handler_called
+        handler_called = True
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_effort_config(monkeypatch, "medium", thinking=True)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIClientError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIClientError):
+        _run_async(run())
+
+    assert not handler_called, "HTTP request was sent despite invalid reasoning_effort"
+
+
+def test_thinking_enabled_missing_effort_does_not_send_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler_called = False
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal handler_called
+        handler_called = True
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_effort_config(monkeypatch, None, thinking=True)
+
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.ai_errors import AIClientError
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIClientError):
+        _run_async(run())
+
+    assert not handler_called
+
+
+def test_thinking_disabled_ignores_invalid_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When thinking is disabled, any reasoning_effort value must be ignored."""
+    captured: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json=_ok_response())
+
+    transport = httpx.MockTransport(handler)
+    config = _make_effort_config(monkeypatch, "medium", thinking=False)
+
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    _run_async(run())
+
+    assert len(captured) == 1
+    body = json.loads(captured[0].content)
+    assert body["thinking"] == {"type": "disabled"}
+    assert "reasoning_effort" not in body
+
+
+# ---------------------------------------------------------------------------
 # 5.  No real network access
 # ---------------------------------------------------------------------------
 
