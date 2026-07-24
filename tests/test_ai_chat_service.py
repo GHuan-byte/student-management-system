@@ -1598,3 +1598,239 @@ def test_mixed_all_read_still_works() -> None:
     result = _run_async(run())
     assert result["success"] is True
     assert result["reply"] == "共有 42 名学生，其中计算机专业 10 人。"
+
+
+# ===================================================================
+# 7. Multiple write tool calls — fail-closed
+# ===================================================================
+
+TWO_WRITE_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "add_student",
+            "arguments": '{"student_number": "0001", "name": "张三"}'
+        }},
+        {"id": "c2", "type": "function", "function": {
+            "name": "update_student",
+            "arguments": '{"student_id": 1, "name": "李四"}'
+        }},
+    ],
+}
+
+THREE_WRITE_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+        {"id": "c2", "type": "function", "function": {
+            "name": "delete_student", "arguments": '{"student_id": 1}'}},
+        {"id": "c3", "type": "function", "function": {
+            "name": "upsert_student", "arguments": "{}"}},
+    ],
+}
+
+DUPLICATE_WRITE_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "add_student",
+            "arguments": '{"student_number": "0001", "name": "张三"}'
+        }},
+        {"id": "c2", "type": "function", "function": {
+            "name": "add_student",
+            "arguments": '{"student_number": "0002", "name": "王五"}'
+        }},
+    ],
+}
+
+REORDERED_WRITE_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "update_student", "arguments": "{}"}},
+        {"id": "c2", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+    ],
+}
+
+
+def test_multi_write_two_different_tools() -> None:
+    """Two different write tools: none executed."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    deepseek = FakeDeepSeekClient([TWO_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 0
+
+
+def test_multi_write_three_different_tools() -> None:
+    """Three different write tools: none executed."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    deepseek = FakeDeepSeekClient([THREE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 0
+
+
+def test_multi_write_same_tool_twice() -> None:
+    """Same write tool repeated: none executed."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    deepseek = FakeDeepSeekClient([DUPLICATE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 0
+
+
+def test_multi_write_reordered() -> None:
+    """Write tools in different order: still rejected."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    deepseek = FakeDeepSeekClient([REORDERED_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 0
+
+
+def test_multi_write_deepseek_called_once() -> None:
+    """DeepSeek called only once when multiple writes detected."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    deepseek = FakeDeepSeekClient([TWO_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError):
+        _run_async(run())
+
+    assert deepseek.call_count == 1
+
+
+def test_multi_write_adapter_lifecycle() -> None:
+    """Adapter context enters and exits normally."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    deepseek = FakeDeepSeekClient([TWO_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError):
+        _run_async(run())
+
+    assert adapter.enter_count == 1
+    assert adapter.exit_count == 1
+    assert adapter.discover_count == 1
+
+
+def test_multi_write_error_message_safe() -> None:
+    """Error message must not leak sensitive data."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    deepseek = FakeDeepSeekClient([TWO_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError) as excinfo:
+        _run_async(run())
+
+    msg = str(excinfo.value)
+    assert "张三" not in msg
+    assert "0001" not in msg
+    assert excinfo.value.code == "ai_write_confirmation_required"
+
+
+def test_multi_write_single_write_still_works() -> None:
+    """Single write tool must still be rejected after multi-write changes."""
+    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+
+    single_write: dict[str, Any] = {
+        "content": None,
+        "tool_calls": [
+            {"id": "c1", "type": "function", "function": {
+                "name": "delete_student", "arguments": '{"student_id": 42}'}},
+        ],
+    }
+
+    deepseek = FakeDeepSeekClient([single_write])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "删除学生"}])
+
+    with pytest.raises(AIWriteConfirmationRequiredError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 0

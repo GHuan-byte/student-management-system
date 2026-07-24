@@ -143,7 +143,12 @@
 - [x] 2.6.5c RED/GREEN: multiple reads + write — no tool executed
 - [x] 2.6.5d RED/GREEN: multiple writes — no tool executed
 - [x] 2.6.5e REFACTOR: Pre-scan tool_names before execution loop
-- [ ] 2.6.6 RED: Test multiple write tools — none execute, returns ai_multiple_write_actions
+- [ ] 2.6.6 Multiple write tool calls return ai_multiple_write_actions
+- [x] 2.6.6a VERIFY: Multiple write tool calls fail closed before execution
+<br>Current behavior rejects the entire write-tool batch before execution.
+No MCP tool is executed and no partial action occurs.
+The final ai_multiple_write_actions response remains pending
+confirmation-token orchestration.
 - [ ] 2.6.7 RED: Test unknown tool — not executed, structured error returned
 - [ ] 2.6.8 RED: Test at most one Pending Action per response
 - [ ] 2.6.9 RED: Test multi-round Tool Loop
