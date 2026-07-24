@@ -158,7 +158,10 @@ confirmation-token orchestration.
 - [x] 2.6.9a–g: Multi-round sub-tasks
 - [x] 2.6.10 RED: Test max tool rounds limit enforced
 - [x] 2.6.10a–d: Max rounds sub-tasks
-- [ ] 2.6.11 RED: Test MCP tool error does not crash service
+- [x] 2.6.11 VERIFY: MCP business and technical errors remain safe Tool Results
+- [x] 2.6.11a VERIFY: Business error → safe Tool Result, service continues
+- [x] 2.6.11b VERIFY: mcp_tool_error → safe Tool Result, service continues
+- [x] 2.6.11c VERIFY: Error in round 1 does not block round 2
 - [ ] 2.6.12 RED: Test write tool returns pending action instead of executing
 - [ ] 2.6.13 RED: Test confirmed write executes exactly once
 - [ ] 2.6.14 RED: Test cancelled write does not execute

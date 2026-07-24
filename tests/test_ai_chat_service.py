@@ -2634,3 +2634,323 @@ def test_max_rounds_adapter_cleaned_up() -> None:
         _run_async(run())
 
     assert adapter.exit_count == 1
+
+
+# ===================================================================
+# 13. MCP error handling — safe Tool Results
+# ===================================================================
+
+ERROR_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "count_students", "arguments": "{}"}},
+    ],
+}
+ERROR_FINAL = {"content": "查询时遇到错误，请稍后重试。"}
+
+
+def test_mcp_business_error_does_not_crash() -> None:
+    """Business error (not_found) must not crash the service."""
+    from app.services.ai_chat_service import AIChatService
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "not_found", "message": "Student not found"},
+    })
+
+    deepseek = FakeDeepSeekClient([ERROR_RESPONSE, ERROR_FINAL])
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    result = _run_async(run())
+    assert result["success"] is True
+    assert result["reply"] == "查询时遇到错误，请稍后重试。"
+
+
+def test_mcp_technical_error_does_not_crash() -> None:
+    """mcp_tool_error must not crash the service."""
+    from app.services.ai_chat_service import AIChatService
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "mcp_tool_error", "message": "学生数据工具暂时不可用"},
+    })
+
+    deepseek = FakeDeepSeekClient([ERROR_RESPONSE, ERROR_FINAL])
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    result = _run_async(run())
+    assert result["success"] is True
+    assert result["reply"] == "查询时遇到错误，请稍后重试。"
+
+
+def test_mcp_business_error_then_read_still_executes() -> None:
+    """Business error in first tool must not block second read tool."""
+    from app.services.ai_chat_service import AIChatService
+
+    two_tool_error: dict[str, Any] = {
+        "content": None,
+        "tool_calls": [
+            {"id": "c1", "type": "function", "function": {
+                "name": "count_students", "arguments": "{}"}},
+            {"id": "c2", "type": "function", "function": {
+                "name": "list_students", "arguments": '{"page": 1}'}},
+        ],
+    }
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "not_found", "message": "Not found"},
+    })
+    adapter.add_invoke_result({
+        "success": True,
+        "data": {"count": 10},
+    })
+
+    deepseek = FakeDeepSeekClient([two_tool_error, ERROR_FINAL])
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+    assert adapter.invoke_count == 2
+    assert adapter.called_tools == ["count_students", "list_students"]
+
+
+def test_mcp_technical_error_then_read_still_executes() -> None:
+    """mcp_tool_error in first tool must not block second read tool."""
+    from app.services.ai_chat_service import AIChatService
+
+    two_tool_error: dict[str, Any] = {
+        "content": None,
+        "tool_calls": [
+            {"id": "c1", "type": "function", "function": {
+                "name": "count_students", "arguments": "{}"}},
+            {"id": "c2", "type": "function", "function": {
+                "name": "search_students",
+                "arguments": '{"keyword": "计算机"}'}},
+        ],
+    }
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "mcp_tool_error", "message": "暂不可用"},
+    })
+    adapter.add_invoke_result({
+        "success": True,
+        "data": {"count": 10},
+    })
+
+    deepseek = FakeDeepSeekClient([two_tool_error, ERROR_FINAL])
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+    assert adapter.invoke_count == 2
+
+
+def test_mcp_error_tool_result_json_structure() -> None:
+    """Tool Result JSON must preserve error.code and error.message safely."""
+    from app.services.ai_chat_service import AIChatService
+
+    class MsgCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([ERROR_RESPONSE, ERROR_FINAL])
+            self.captured: list[list[dict[str, Any]]] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.captured.append(list(messages))
+            return await super().create_chat_completion(messages)
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "not_found", "message": "未找到"},
+    })
+
+    deepseek = MsgCapture()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+
+    second_msgs = deepseek.captured[1]
+    tool_msg = next(m for m in second_msgs if m["role"] == "tool")
+    content = json.loads(tool_msg["content"])
+    assert content["success"] is False
+    assert content["error"]["code"] == "not_found"
+    assert content["error"]["message"] == "未找到"
+    assert "structured_content" not in tool_msg["content"]
+    assert "parsed_text" not in tool_msg["content"]
+
+
+def test_mcp_error_tool_result_no_debug_fields() -> None:
+    """Tool Result must not contain traceback, db path, session."""
+    from app.services.ai_chat_service import AIChatService
+
+    class MsgCapture(FakeDeepSeekClient):
+        def __init__(self) -> None:
+            super().__init__([ERROR_RESPONSE, ERROR_FINAL])
+            self.captured: list[list[dict[str, Any]]] = []
+
+        async def create_chat_completion(
+            self,
+            messages: list[dict[str, str]],
+            *,
+            tools: list[dict[str, Any]] | None = None,
+        ) -> dict[str, Any]:
+            self.captured.append(list(messages))
+            return await super().create_chat_completion(messages)
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "mcp_tool_error", "message": "err"},
+    })
+
+    deepseek = MsgCapture()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+
+    second_msgs = deepseek.captured[1]
+    tool_msg = next(m for m in second_msgs if m["role"] == "tool")
+    content_str = tool_msg["content"]
+    assert "Traceback" not in content_str
+    assert "database" not in content_str.lower()
+    assert "session" not in content_str.lower()
+
+
+def test_mcp_error_multi_round_continues() -> None:
+    """Error in round 1, next round must still execute."""
+    from app.services.ai_chat_service import AIChatService
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "mcp_tool_error", "message": "err"},
+    })
+
+    deepseek = FakeDeepSeekClient([
+        ERROR_RESPONSE,
+        ROUND2_RESPONSE,
+        FINAL_TEXT,
+    ])
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    result = _run_async(run())
+    assert adapter.invoke_count == 2
+    assert result["reply"] == "最终回答"
+
+
+def test_mcp_error_adapter_context_once() -> None:
+    """Even with MCP errors, adapter context enters/exits once."""
+    from app.services.ai_chat_service import AIChatService
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "mcp_tool_error", "message": "err"},
+    })
+
+    deepseek = FakeDeepSeekClient([ERROR_RESPONSE, ERROR_FINAL])
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    _run_async(run())
+    assert adapter.enter_count == 1
+    assert adapter.exit_count == 1
+    assert adapter.discover_count == 1
+
+
+def test_mcp_error_final_no_reasoning() -> None:
+    """Final result must not contain reasoning_content with MCP errors."""
+    from app.services.ai_chat_service import AIChatService
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "not_found", "message": "err"},
+    })
+
+    error_with_reasoning: dict[str, Any] = {
+        "content": None,
+        "reasoning_content": "推理内容",
+        "tool_calls": [
+            {"id": "c1", "type": "function", "function": {
+                "name": "count_students", "arguments": "{}"}},
+        ],
+    }
+
+    deepseek = FakeDeepSeekClient([error_with_reasoning, ERROR_FINAL])
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "查数据"}])
+
+    result = _run_async(run())
+    assert "reasoning_content" not in result
