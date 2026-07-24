@@ -102,6 +102,44 @@ async def list_mcp_tools_async(
     return tools
 
 
+async def list_tools_in_session(
+    session: ClientSession,
+) -> list[dict[str, Any]]:
+    """List tools using an already-open MCP session (no new subprocess)."""
+    tools: list[dict[str, Any]] = []
+    cursor: str | None = None
+    while True:
+        result = await session.list_tools(cursor)
+        tools.extend(
+            {
+                "name": tool.name,
+                "title": tool.title,
+                "description": tool.description or "",
+                "input_schema": tool.inputSchema,
+            }
+            for tool in result.tools
+        )
+        cursor = result.nextCursor
+        if not cursor:
+            break
+    return tools
+
+
+async def call_tool_in_session(
+    session: ClientSession,
+    tool_name: str,
+    arguments: dict[str, Any] | None = None,
+    *,
+    read_timeout_seconds: timedelta = DEFAULT_READ_TIMEOUT,
+) -> Any:
+    """Call a tool using an already-open MCP session (no new subprocess)."""
+    return await session.call_tool(
+        tool_name,
+        arguments=arguments or {},
+        read_timeout_seconds=read_timeout_seconds,
+    )
+
+
 def _parse_tool_content(result: types.CallToolResult) -> dict[str, Any]:
     structured_content = result.structuredContent
     content_blocks: list[dict[str, Any]] = []

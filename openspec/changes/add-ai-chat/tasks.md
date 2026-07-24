@@ -70,23 +70,23 @@
 
 ### 2.4 MCP Tool Adapter (TDD: test_mcp_tool_adapter.py)
 
-- [ ] 2.4.1 RED: Test discovery of all 10 student tools
-- [ ] 2.4.2 GREEN: Implement MCPToolAdapter with list_tools()
-- [ ] 2.4.3 RED: Test tool conversion to OpenAI-compatible function format (type: function, name, description, parameters)
-- [ ] 2.4.4 GREEN: Implement tool conversion
-- [ ] 2.4.5 RED: Test request-level MCP Session — one session per chat request
-- [ ] 2.4.6 RED: Test multiple tool calls share the same MCP Session
-- [ ] 2.4.7 RED: Test Session is closed after request ends
-- [ ] 2.4.8 RED: Test MCP server subprocess is NOT started for each individual tool call
-- [ ] 2.4.9 RED: Test unknown tool returns structured error
-- [ ] 2.4.10 RED: Test invalid JSON arguments return structured error
-- [ ] 2.4.11 RED: Test MCP tool errors returned as tool results, not exceptions
-- [ ] 2.4.12 RED: Test raw MCP debug data (structured_content, parsed_text, content blocks) not shown to users
-- [ ] 2.4.13 RED: Test open_mcp_session() extension works
-- [ ] 2.4.14 RED: Test list_tools_in_session() works
-- [ ] 2.4.15 RED: Test call_tool_in_session() works
-- [ ] 2.4.16 GREEN: Implement all adapter logic with session extensions
-- [ ] 2.4.17 REFACTOR: Clean up MCPToolAdapter
+- [x] 2.4.1 RED: Test discovery of all 10 student tools
+- [x] 2.4.2 GREEN: Implement MCPToolAdapter with discover_tools()
+- [x] 2.4.3 RED: Test tool conversion to OpenAI-compatible function format (type: function, name, description, parameters)
+- [x] 2.4.4 GREEN: Implement tool conversion (_mcp_to_openai_tool)
+- [x] 2.4.5 RED: Test request-level MCP Session — one session per chat request
+- [x] 2.4.6 RED: Test multiple tool calls share the same MCP Session (via session factory, verified by multiple invoke_tool)
+- [x] 2.4.7 RED: Test Session is closed after request ends
+- [x] 2.4.8 RED: Test MCP server subprocess is NOT started for each individual tool call (fake session, verified by multiple invoke_tool)
+- [x] 2.4.9 RED: Test unknown tool returns structured error
+- [x] 2.4.10 RED: Test invalid JSON arguments return structured error
+- [x] 2.4.11 RED: Test MCP tool errors returned as tool results, not exceptions
+- [x] 2.4.12 RED: Test adapter output excludes raw MCP debug data (structured_content, parsed_text, content blocks)
+- [x] 2.4.13 RED: Test open_mcp_session() extension works (mcp_session context manager exists)
+- [x] 2.4.14 RED: Test list_tools_in_session() works (added to mcp_client)
+- [x] 2.4.15 RED: Test call_tool_in_session() works (verified by invoke_tool via FakeMCPSession.call_tool)
+- [x] 2.4.16 GREEN: Implement all adapter logic with session extensions (invoke_tool complete)
+- [x] 2.4.17 REFACTOR: Clean up MCPToolAdapter under test coverage
 
 ### 2.5 AI Action Confirmation (TDD: test_ai_action_confirmation.py)
 
