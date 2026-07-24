@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-from typing import Any, Callable
+from typing import Any, AsyncContextManager, Callable
 
 from mcp_client.client import call_tool_in_session, list_tools_in_session
 
 OpenAITool = dict[str, Any]
-SessionFactory = Callable[[], Any]
+SessionFactory = Callable[[], AsyncContextManager[Any]]
 
 
 class NotInContextError(RuntimeError):
@@ -114,57 +113,24 @@ class MCPToolAdapter:
     # Async context manager
     # ------------------------------------------------------------------
 
-    @staticmethod
-    async def _make_session_context(
-        database_path: str | None,
-        session_factory: SessionFactory | None,
-    ) -> tuple[Any, Any]:
-        """Create an async context manager and enter it, returning
-        ``(context_manager, session)``.
-
-        *Production*: context is ``mcp_session()``.
-        *Test*: context is a simple wrapper that calls ``session.close()``.
-        """
-        if session_factory is not None:
-            result = session_factory()
-            if asyncio.iscoroutine(result):
-                session = await result
-            else:
-                session = result
-
-            # Wrap the session in a minimal async context manager so the
-            # ``__aexit__`` path is identical for test and production.
-            class _SessionCM:
-                def __init__(self, sess: Any) -> None:
-                    self._sess = sess
-
-                async def __aenter__(self) -> Any:
-                    return self._sess
-
-                async def __aexit__(self, *args: Any) -> None:
-                    if hasattr(self._sess, "close"):
-                        await self._sess.close()
-
-            cm = _SessionCM(session)
-            return cm, session
-
-        from mcp_client.client import mcp_session
-
-        cm = mcp_session(database_path=database_path)
-        session = await cm.__aenter__()
-        return cm, session
-
     async def __aenter__(self) -> MCPToolAdapter:
-        self._cm, self._session = await self._make_session_context(
-            self._database_path, self._session_factory
-        )
+        factory = self._session_factory or self._default_session_factory
+        self._session_context = factory()
+        self._session = await self._session_context.__aenter__()
         return self
 
     async def __aexit__(self, *args: Any) -> None:
-        if hasattr(self, "_cm") and self._cm is not None:
-            await self._cm.__aexit__(*args)
-        self._session = None
-        self._cm = None
+        try:
+            if self._session_context is not None:
+                await self._session_context.__aexit__(*args)
+        finally:
+            self._session = None
+            self._session_context = None
+
+    def _default_session_factory(self) -> AsyncContextManager[Any]:
+        from mcp_client.client import mcp_session
+
+        return mcp_session(database_path=self._database_path)
 
     # ------------------------------------------------------------------
     # Public API

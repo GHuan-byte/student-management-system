@@ -225,7 +225,6 @@ class FakeMCPSession:
 
     def __init__(self, tools: list[FakeTool] | None = None) -> None:
         self._tools = tools or _build_fake_tools()
-        self._closed = False
         self.call_count = 0
         self.called_tools: list[str] = []
         self.called_args: list[dict[str, Any]] = []
@@ -250,13 +249,31 @@ class FakeMCPSession:
             return self._results.pop(0)
         return FakeCallToolResult()
 
-    async def close(self) -> None:
-        self._closed = True
+
+class FakeAsyncContextManager:
+    """Async context manager that wraps a FakeMCPSession.
+
+    Records enter/exit counts and propagates exception info.
+    """
+
+    def __init__(self, session: FakeMCPSession | None = None) -> None:
+        self._session = session or FakeMCPSession()
+        self.enter_count = 0
+        self.exit_count = 0
+        self.received_exc_type: type[BaseException] | None = None
+
+    async def __aenter__(self) -> FakeMCPSession:
+        self.enter_count += 1
+        return self._session
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.exit_count += 1
+        self.received_exc_type = exc_type
 
 
-async def _fake_session_factory() -> FakeMCPSession:
-    """Factory that returns a pre-configured fake session."""
-    return FakeMCPSession()
+def _fake_session_factory() -> FakeAsyncContextManager:
+    """Factory that returns a FakeAsyncContextManager."""
+    return FakeAsyncContextManager()
 
 
 def _run_async(coro: Any) -> Any:
@@ -272,19 +289,35 @@ def test_adapter_enters_context_and_creates_session_once() -> None:
     """Entering the adapter context must create exactly one session."""
     from app.services.mcp_tool_adapter import MCPToolAdapter
 
-    session_count = 0
+    cm = FakeAsyncContextManager()
 
-    async def factory() -> FakeMCPSession:
-        nonlocal session_count
-        session_count += 1
-        return FakeMCPSession()
+    def factory() -> FakeAsyncContextManager:
+        return cm
 
     async def run() -> None:
         async with MCPToolAdapter(session_factory=factory) as adapter:
             assert adapter._session is not None
 
     _run_async(run())
-    assert session_count == 1, "Session factory should be called exactly once"
+    assert cm.enter_count == 1
+
+
+def test_factory_returns_async_context_manager() -> None:
+    """Factory must return an async context manager, not a bare session."""
+    from app.services.mcp_tool_adapter import MCPToolAdapter
+
+    cm = FakeAsyncContextManager()
+
+    def factory() -> FakeAsyncContextManager:
+        return cm
+
+    async def run() -> None:
+        async with MCPToolAdapter(session_factory=factory) as adapter:
+            assert adapter._session is not None
+
+    _run_async(run())
+    assert cm.enter_count == 1, "__aenter__ should be called exactly once"
+    assert cm.exit_count == 1, "__aexit__ should be called exactly once"
 
 
 def test_discover_returns_10_tools() -> None:
@@ -442,37 +475,42 @@ def test_discover_outside_context_raises_error() -> None:
         _run_async(run())
 
 
-def test_session_is_closed_on_exit() -> None:
+def test_exit_clears_session_and_context_refs() -> None:
     from app.services.mcp_tool_adapter import MCPToolAdapter
 
-    async def run() -> bool:
-        session = FakeMCPSession()
-        async with MCPToolAdapter(session_factory=lambda: session) as adapter:
-            await adapter.discover_tools()
-        return session._closed
+    cm = FakeAsyncContextManager()
 
+    def factory() -> FakeAsyncContextManager:
+        return cm
 
-def test_factory_function_called_once() -> None:
-    from app.services.mcp_tool_adapter import MCPToolAdapter
-
-    session = FakeMCPSession()
-    call_count = 0
-
-    async def factory() -> FakeMCPSession:
-        nonlocal call_count
-        call_count += 1
-        return session
-
-    async def run() -> int:
+    async def run() -> tuple:
         async with MCPToolAdapter(session_factory=factory) as adapter:
             await adapter.discover_tools()
-        return call_count
+        return (adapter._session, adapter._session_context)
 
-    count = _run_async(run())
-    assert count == 1
+    session_ref, ctx_ref = _run_async(run())
+    assert session_ref is None, "_session must be None after exit"
+    assert ctx_ref is None, "_session_context must be None after exit"
 
-    closed = _run_async(run())
-    assert closed, "Session was not closed on adapter exit"
+
+def test_exit_propagates_exception_to_context() -> None:
+    from app.services.mcp_tool_adapter import MCPToolAdapter
+
+    cm = FakeAsyncContextManager()
+
+    def factory() -> FakeAsyncContextManager:
+        return cm
+
+    async def run() -> None:
+        async with MCPToolAdapter(session_factory=factory) as adapter:
+            await adapter.discover_tools()
+            raise ValueError("test error")
+
+    with pytest.raises(ValueError):
+        _run_async(run())
+
+    assert cm.exit_count == 1
+    assert cm.received_exc_type is ValueError, "Exception type must propagate to __aexit__"
 
 
 def test_adapter_does_not_access_real_mcp_server() -> None:
@@ -496,8 +534,8 @@ def test_invoke_known_tool_calls_session() -> None:
 
     session = FakeMCPSession()
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -514,8 +552,8 @@ def test_invoke_with_json_string_arguments() -> None:
 
     session = FakeMCPSession()
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -531,8 +569,8 @@ def test_invoke_with_dict_arguments() -> None:
 
     session = FakeMCPSession()
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -549,8 +587,8 @@ def test_invoke_empty_json_object_valid() -> None:
 
     session = FakeMCPSession()
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -566,8 +604,8 @@ def test_invoke_invalid_json_returns_error() -> None:
 
     session = FakeMCPSession()
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -585,8 +623,8 @@ def test_invoke_json_array_returns_error() -> None:
 
     session = FakeMCPSession()
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -604,8 +642,8 @@ def test_invoke_json_null_returns_error() -> None:
 
     session = FakeMCPSession()
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -622,8 +660,8 @@ def test_unknown_tool_returns_error() -> None:
 
     session = FakeMCPSession()
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -641,12 +679,9 @@ def test_multiple_invoke_share_same_session() -> None:
     from app.services.mcp_tool_adapter import MCPToolAdapter
 
     session = FakeMCPSession()
-    factory_calls = 0
 
-    async def factory() -> FakeMCPSession:
-        nonlocal factory_calls
-        factory_calls += 1
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> None:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -655,7 +690,6 @@ def test_multiple_invoke_share_same_session() -> None:
             await adapter.invoke_tool("list_students", {})
 
     _run_async(run())
-    assert factory_calls == 1, "Factory should be called only once"
     assert session.call_count == 2
     assert session.called_tools == ["count_students", "list_students"]
 
@@ -666,8 +700,8 @@ def test_mcp_success_result_is_sanitized() -> None:
 
     session = FakeMCPSession()
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -691,8 +725,8 @@ def test_mcp_business_error_returns_tool_result() -> None:
         isError=True,
     ))
 
-    async def factory() -> FakeMCPSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
@@ -714,8 +748,8 @@ def test_mcp_technical_exception_returns_safe_error() -> None:
 
     session = BrokenSession()
 
-    async def factory() -> BrokenSession:
-        return session
+    def factory() -> FakeAsyncContextManager:
+        return FakeAsyncContextManager(session)
 
     async def run() -> dict[str, Any]:
         async with MCPToolAdapter(session_factory=factory) as adapter:
