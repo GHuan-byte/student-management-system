@@ -91,3 +91,9 @@ class AIToolRoundLimitError(AIClientError):
     """Raised when the tool call round count exceeds AI_MAX_TOOL_ROUNDS."""
     code = "ai_tool_round_limit"
     safe_message = "AI 工具调用轮数超过限制，请重新提问"
+
+
+class AIMultipleWriteActionsError(AIClientError):
+    """Raised when the model requests multiple write tools in one response."""
+    code = "ai_multiple_write_actions"
+    safe_message = "一次只能确认一个写操作，请分别确认"

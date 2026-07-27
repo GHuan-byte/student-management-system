@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from app.services.ai_errors import AIWriteConfirmationRequiredError
+from app.services.ai_errors import AIMultipleWriteActionsError
 
 # ---------------------------------------------------------------------------
 # Fake DeepSeekClient
@@ -131,6 +131,20 @@ class FakeMCPToolAdapter:
 
     async def __aexit__(self, *args: Any) -> None:
         self.exit_count += 1
+
+
+class FakeAIActionConfirmation:
+    """Fake that records create_token calls and returns a preset token."""
+
+    def __init__(self, token: str = "signed-token-abc") -> None:
+        self.token = token
+        self.create_count = 0
+        self.received_payloads: list[dict[str, object]] = []
+
+    def create_token(self, payload: dict[str, object]) -> str:
+        self.create_count += 1
+        self.received_payloads.append(dict(payload))
+        return self.token
 
 
 # ---------------------------------------------------------------------------
@@ -905,16 +919,13 @@ def test_write_tool_not_executed() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    try:
-        _run_async(run())
-    except AIWriteConfirmationRequiredError:
-        pass
+    _run_async(run())
 
     assert adapter.invoke_count == 0
 
 
 def test_write_tool_returns_controlled_error() -> None:
-    """Write tool request must return a controlled error, not crash."""
+    """Write tool request must return a pending action, not crash."""
     from app.services.ai_chat_service import AIChatService
 
     write_tool_response: dict[str, Any] = {
@@ -942,8 +953,8 @@ def test_write_tool_returns_controlled_error() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
-        _run_async(run())
+    result = _run_async(run())
+    assert result["requires_confirmation"] is True
 
 
 # ===================================================================
@@ -1417,7 +1428,7 @@ MULTI_WRITE_RESPONSE: dict[str, Any] = {
 
 def test_mixed_read_then_write_no_partial_execution() -> None:
     """read → write: no tool must be executed (no partial execution)."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService
 
     deepseek = FakeDeepSeekClient([READ_FIRST_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1430,15 +1441,15 @@ def test_mixed_read_then_write_no_partial_execution() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
-        _run_async(run())
+    result = _run_async(run())
+    assert result["requires_confirmation"] is True
 
     assert adapter.invoke_count == 0, "No tool should be executed"
 
 
 def test_mixed_write_then_read_no_execution() -> None:
     """write → read: no tool must be executed."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService
 
     deepseek = FakeDeepSeekClient([WRITE_FIRST_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1451,15 +1462,15 @@ def test_mixed_write_then_read_no_execution() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
-        _run_async(run())
+    result = _run_async(run())
+    assert result["requires_confirmation"] is True
 
     assert adapter.invoke_count == 0
 
 
 def test_mixed_multiple_reads_one_write_no_execution() -> None:
     """Multiple reads + one write: no tool must be executed."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService
 
     multi_read_then_write: dict[str, Any] = {
         "content": None,
@@ -1484,15 +1495,15 @@ def test_mixed_multiple_reads_one_write_no_execution() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
-        _run_async(run())
+    result = _run_async(run())
+    assert result["requires_confirmation"] is True
 
     assert adapter.invoke_count == 0
 
 
 def test_mixed_multiple_writes_no_execution() -> None:
     """Multiple write tools: no tool must be executed."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
     deepseek = FakeDeepSeekClient([MULTI_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1505,17 +1516,18 @@ def test_mixed_multiple_writes_no_execution() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
+    with pytest.raises(AIMultipleWriteActionsError) as excinfo:
         _run_async(run())
 
+    assert excinfo.value.code == "ai_multiple_write_actions"
     assert adapter.invoke_count == 0
 
 
 def test_mixed_deepseek_called_once() -> None:
     """When write tools detected, DeepSeek must be called only once."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
-    deepseek = FakeDeepSeekClient([READ_FIRST_RESPONSE])
+    deepseek = FakeDeepSeekClient([MULTI_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
 
     service = AIChatService(
@@ -1526,7 +1538,7 @@ def test_mixed_deepseek_called_once() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
+    with pytest.raises(AIMultipleWriteActionsError):
         _run_async(run())
 
     assert deepseek.call_count == 1
@@ -1534,9 +1546,9 @@ def test_mixed_deepseek_called_once() -> None:
 
 def test_mixed_adapter_still_enters_and_exits() -> None:
     """Adapter context must still enter and exit normally on mixed write."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
-    deepseek = FakeDeepSeekClient([READ_FIRST_RESPONSE])
+    deepseek = FakeDeepSeekClient([MULTI_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
 
     service = AIChatService(
@@ -1547,7 +1559,7 @@ def test_mixed_adapter_still_enters_and_exits() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
+    with pytest.raises(AIMultipleWriteActionsError):
         _run_async(run())
 
     assert adapter.enter_count == 1
@@ -1557,9 +1569,9 @@ def test_mixed_adapter_still_enters_and_exits() -> None:
 
 def test_mixed_error_message_safe() -> None:
     """Error message must not contain tool arguments, student data, or API Key."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
-    deepseek = FakeDeepSeekClient([READ_FIRST_RESPONSE])
+    deepseek = FakeDeepSeekClient([MULTI_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
 
     service = AIChatService(
@@ -1570,13 +1582,13 @@ def test_mixed_error_message_safe() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError) as excinfo:
+    with pytest.raises(AIMultipleWriteActionsError) as excinfo:
         _run_async(run())
 
     msg = str(excinfo.value)
     assert "张三" not in msg
     assert "0001" not in msg
-    assert excinfo.value.code == "ai_write_confirmation_required"
+    assert excinfo.value.code == "ai_multiple_write_actions"
 
 
 def test_mixed_all_read_still_works() -> None:
@@ -1656,7 +1668,7 @@ REORDERED_WRITE_RESPONSE: dict[str, Any] = {
 
 def test_multi_write_two_different_tools() -> None:
     """Two different write tools: none executed."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
     deepseek = FakeDeepSeekClient([TWO_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1669,7 +1681,7 @@ def test_multi_write_two_different_tools() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
+    with pytest.raises(AIMultipleWriteActionsError):
         _run_async(run())
 
     assert adapter.invoke_count == 0
@@ -1677,7 +1689,7 @@ def test_multi_write_two_different_tools() -> None:
 
 def test_multi_write_three_different_tools() -> None:
     """Three different write tools: none executed."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
     deepseek = FakeDeepSeekClient([THREE_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1690,7 +1702,7 @@ def test_multi_write_three_different_tools() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
+    with pytest.raises(AIMultipleWriteActionsError):
         _run_async(run())
 
     assert adapter.invoke_count == 0
@@ -1698,7 +1710,7 @@ def test_multi_write_three_different_tools() -> None:
 
 def test_multi_write_same_tool_twice() -> None:
     """Same write tool repeated: none executed."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
     deepseek = FakeDeepSeekClient([DUPLICATE_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1711,7 +1723,7 @@ def test_multi_write_same_tool_twice() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
+    with pytest.raises(AIMultipleWriteActionsError):
         _run_async(run())
 
     assert adapter.invoke_count == 0
@@ -1719,7 +1731,7 @@ def test_multi_write_same_tool_twice() -> None:
 
 def test_multi_write_reordered() -> None:
     """Write tools in different order: still rejected."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
     deepseek = FakeDeepSeekClient([REORDERED_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1732,7 +1744,7 @@ def test_multi_write_reordered() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
+    with pytest.raises(AIMultipleWriteActionsError):
         _run_async(run())
 
     assert adapter.invoke_count == 0
@@ -1740,7 +1752,7 @@ def test_multi_write_reordered() -> None:
 
 def test_multi_write_deepseek_called_once() -> None:
     """DeepSeek called only once when multiple writes detected."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
     deepseek = FakeDeepSeekClient([TWO_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1753,7 +1765,7 @@ def test_multi_write_deepseek_called_once() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
+    with pytest.raises(AIMultipleWriteActionsError):
         _run_async(run())
 
     assert deepseek.call_count == 1
@@ -1761,7 +1773,7 @@ def test_multi_write_deepseek_called_once() -> None:
 
 def test_multi_write_adapter_lifecycle() -> None:
     """Adapter context enters and exits normally."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
     deepseek = FakeDeepSeekClient([TWO_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1774,7 +1786,7 @@ def test_multi_write_adapter_lifecycle() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
+    with pytest.raises(AIMultipleWriteActionsError):
         _run_async(run())
 
     assert adapter.enter_count == 1
@@ -1784,7 +1796,7 @@ def test_multi_write_adapter_lifecycle() -> None:
 
 def test_multi_write_error_message_safe() -> None:
     """Error message must not leak sensitive data."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
 
     deepseek = FakeDeepSeekClient([TWO_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -1797,18 +1809,18 @@ def test_multi_write_error_message_safe() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError) as excinfo:
+    with pytest.raises(AIMultipleWriteActionsError) as excinfo:
         _run_async(run())
 
     msg = str(excinfo.value)
     assert "张三" not in msg
     assert "0001" not in msg
-    assert excinfo.value.code == "ai_write_confirmation_required"
+    assert excinfo.value.code == "ai_multiple_write_actions"
 
 
 def test_multi_write_single_write_still_works() -> None:
     """Single write tool must still be rejected after multi-write changes."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService
 
     single_write: dict[str, Any] = {
         "content": None,
@@ -1829,8 +1841,8 @@ def test_multi_write_single_write_still_works() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "删除学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
-        _run_async(run())
+    result = _run_async(run())
+    assert result["requires_confirmation"] is True
 
     assert adapter.invoke_count == 0
 
@@ -2164,7 +2176,7 @@ def test_unknown_at_start_does_not_block_reads() -> None:
 
 def test_unknown_mixed_with_write_still_rejected() -> None:
     """Unknown + write must still trigger write fail-closed."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService
 
     unknown_then_write: dict[str, Any] = {
         "content": None,
@@ -2187,8 +2199,8 @@ def test_unknown_mixed_with_write_still_rejected() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
-        _run_async(run())
+    result = _run_async(run())
+    assert result["requires_confirmation"] is True
 
     assert adapter.invoke_count == 0
 
@@ -2478,7 +2490,7 @@ def test_multi_round_unknown_then_read_next_round() -> None:
 
 def test_multi_round_write_in_round2_rejected() -> None:
     """Write tool in round 2: round 2 not executed, round 1 preserved."""
-    from app.services.ai_chat_service import AIChatService, AIWriteConfirmationRequiredError
+    from app.services.ai_chat_service import AIChatService
 
     write_round: dict[str, Any] = {
         "content": None,
@@ -2499,8 +2511,8 @@ def test_multi_round_write_in_round2_rejected() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "查数据"}])
 
-    with pytest.raises(AIWriteConfirmationRequiredError):
-        _run_async(run())
+    result = _run_async(run())
+    assert result["requires_confirmation"] is True
 
     assert adapter.invoke_count == 1
     assert adapter.called_tools[0] == "count_students"
@@ -2954,3 +2966,960 @@ def test_mcp_error_final_no_reasoning() -> None:
 
     result = _run_async(run())
     assert "reasoning_content" not in result
+
+
+# ===================================================================
+# 14. Write tool → Pending Action
+# ===================================================================
+
+SINGLE_WRITE_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cw", "type": "function", "function": {
+            "name": "add_student",
+            "arguments": '{"student_number": "0001", "name": "李四"}',
+        }},
+    ],
+}
+
+WRITE_UPDATE_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cu", "type": "function", "function": {
+            "name": "update_student", "arguments": '{"student_id": 1}'}},
+    ],
+}
+
+WRITE_DELETE_RESPONSE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cd", "type": "function", "function": {
+            "name": "delete_student", "arguments": '{"student_id": 42}'}},
+    ],
+}
+
+READ_THEN_WRITE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cr", "type": "function", "function": {
+            "name": "count_students", "arguments": "{}"}},
+        {"id": "cw", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+    ],
+}
+
+WRITE_THEN_READ: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cw", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+        {"id": "cr", "type": "function", "function": {
+            "name": "count_students", "arguments": "{}"}},
+    ],
+}
+
+MULTI_READ_ONE_WRITE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "count_students", "arguments": "{}"}},
+        {"id": "c2", "type": "function", "function": {
+            "name": "search_students", "arguments": '{"keyword": "计算机"}'}},
+        {"id": "c3", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+    ],
+}
+
+UNKNOWN_THEN_WRITE: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "drop_database", "arguments": "{}"}},
+        {"id": "c2", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+    ],
+}
+
+TWO_WRITES_SAME: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+        {"id": "c2", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+    ],
+}
+
+TWO_WRITES_DIFFERENT: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+        {"id": "c2", "type": "function", "function": {
+            "name": "delete_student", "arguments": '{"student_id": 1}'}},
+    ],
+}
+
+THREE_WRITES: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "c1", "type": "function", "function": {
+            "name": "add_student", "arguments": "{}"}},
+        {"id": "c2", "type": "function", "function": {
+            "name": "update_student", "arguments": "{}"}},
+        {"id": "c3", "type": "function", "function": {
+            "name": "delete_student", "arguments": "{}"}},
+    ],
+}
+
+FAKE_TOKEN = "fake-123"
+ACTION_ID = "action-001"
+
+
+def test_single_write_returns_pending_action() -> None:
+    """Single write tool must return a pending action structure."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation(token=FAKE_TOKEN)
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    assert result["success"] is True
+    assert result.get("requires_confirmation") is True
+    assert result.get("confirmation_token") == FAKE_TOKEN
+    assert "pending_action" in result
+
+
+def test_single_write_no_tool_executed() -> None:
+    """Single write tool must not execute any MCP tool."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    _run_async(run())
+    assert adapter.invoke_count == 0
+
+
+def test_single_write_deepseek_called_once() -> None:
+    """Only one DeepSeek call when write tool detected."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    _run_async(run())
+    assert deepseek.call_count == 1
+
+
+def test_single_write_create_token_called() -> None:
+    """AIActionConfirmation.create_token must be called exactly once."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    _run_async(run())
+    assert confirmation.create_count == 1
+
+
+def test_single_write_token_payload_has_correct_fields() -> None:
+    """Token payload must contain tool_name, arguments, action_id."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    _run_async(run())
+
+    payload = confirmation.received_payloads[0]
+    assert payload["tool_name"] == "add_student"
+    assert payload["arguments"] == {"student_number": "0001", "name": "李四"}
+    assert payload["action_id"] == ACTION_ID
+
+
+def test_single_write_pending_action_summary() -> None:
+    """Pending action must contain a summary string."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    pa = result.get("pending_action", {})
+    assert isinstance(pa.get("summary"), str)
+    assert len(pa["summary"]) > 0
+
+
+def test_single_write_pending_action_safe_arguments() -> None:
+    """Pending action must contain safe_arguments."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    assert "safe_arguments" in result.get("pending_action", {})
+
+
+def test_single_write_no_reasoning_in_result() -> None:
+    """Pending action result must not contain reasoning_content."""
+    from app.services.ai_chat_service import AIChatService
+
+    with_reasoning: dict[str, Any] = {
+        "content": None,
+        "reasoning_content": "内部推理",
+        "tool_calls": [
+            {"id": "cw", "type": "function", "function": {
+                "name": "add_student", "arguments": "{}"}},
+        ],
+    }
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([with_reasoning])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    assert "reasoning_content" not in result
+
+
+def test_update_student_returns_pending_action() -> None:
+    """update_student also returns pending action."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([WRITE_UPDATE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "修改学生"}])
+
+    result = _run_async(run())
+    assert result.get("requires_confirmation") is True
+    assert confirmation.received_payloads[0]["tool_name"] == "update_student"
+
+
+def test_delete_student_returns_pending_action() -> None:
+    """delete_student also returns pending action."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([WRITE_DELETE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "删除学生"}])
+
+    result = _run_async(run())
+    assert result.get("requires_confirmation") is True
+
+
+def test_adapter_lifecycle_with_pending_action() -> None:
+    """Adapter enter/exit/discover each exactly once."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    _run_async(run())
+    assert adapter.enter_count == 1
+    assert adapter.exit_count == 1
+    assert adapter.discover_count == 1
+
+
+# ===================================================================
+# 15. Mixed read + single write — no partial execution
+# ===================================================================
+
+
+def test_read_then_write_no_read_execution() -> None:
+    """read → write: no read tool executed, one pending action."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([READ_THEN_WRITE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    assert adapter.invoke_count == 0
+    assert result.get("requires_confirmation") is True
+    assert confirmation.create_count == 1
+
+
+def test_write_then_read_no_execution() -> None:
+    """write → read: no tool executed, one pending action."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([WRITE_THEN_READ])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    assert adapter.invoke_count == 0
+    assert result.get("requires_confirmation") is True
+
+
+def test_multi_read_one_write_no_execution() -> None:
+    """Multiple reads + one write: no tools executed, one pending action."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([MULTI_READ_ONE_WRITE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    assert adapter.invoke_count == 0
+    assert result.get("requires_confirmation") is True
+    assert confirmation.create_count == 1
+
+
+def test_unknown_then_write_generates_pending_action() -> None:
+    """Unknown + one write: write confirmation takes priority."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([UNKNOWN_THEN_WRITE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    assert adapter.invoke_count == 0
+    assert result.get("requires_confirmation") is True
+    assert confirmation.create_count == 1
+
+
+# ===================================================================
+# 16. Multiple write tools → ai_multiple_write_actions
+# ===================================================================
+
+
+def test_two_same_writes_raises_multiple() -> None:
+    """Same write tool twice: ai_multiple_write_actions."""
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([TWO_WRITES_SAME])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIMultipleWriteActionsError) as excinfo:
+        _run_async(run())
+
+    assert excinfo.value.code == "ai_multiple_write_actions"
+    assert adapter.invoke_count == 0
+    assert confirmation.create_count == 0
+
+
+def test_two_different_writes_raises_multiple() -> None:
+    """Two different write tools: ai_multiple_write_actions."""
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([TWO_WRITES_DIFFERENT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIMultipleWriteActionsError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 0
+    assert confirmation.create_count == 0
+
+
+def test_three_writes_raises_multiple() -> None:
+    """Three write tools: ai_multiple_write_actions."""
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([THREE_WRITES])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIMultipleWriteActionsError):
+        _run_async(run())
+
+    assert adapter.invoke_count == 0
+    assert confirmation.create_count == 0
+    assert deepseek.call_count == 1
+
+
+def test_multiple_writes_deepseek_called_once() -> None:
+    """Only one DeepSeek call when multiple writes detected."""
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([TWO_WRITES_DIFFERENT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIMultipleWriteActionsError):
+        _run_async(run())
+
+    assert deepseek.call_count == 1
+
+
+def test_multiple_writes_adapter_lifecycle() -> None:
+    """Adapter context exits normally after multi-write error."""
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([TWO_WRITES_DIFFERENT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIMultipleWriteActionsError):
+        _run_async(run())
+
+    assert adapter.enter_count == 1
+    assert adapter.exit_count == 1
+    assert adapter.discover_count == 1
+
+
+def test_multiple_writes_no_confirmation_token() -> None:
+    """No confirmation token created for multiple writes."""
+    from app.services.ai_chat_service import AIChatService, AIMultipleWriteActionsError
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([TWO_WRITES_DIFFERENT])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    with pytest.raises(AIMultipleWriteActionsError):
+        _run_async(run())
+
+    assert confirmation.create_count == 0
+
+
+# ===================================================================
+# 17. Configuration errors — fail-closed
+# ===================================================================
+
+
+def test_confirmation_not_configured_fail_closed() -> None:
+    """If confirmation is None, service must not execute tools."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=None,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    _run_async(run())
+    assert adapter.invoke_count == 0
+
+
+# ===================================================================
+# 18. Action ID contract — must be non-empty and unique
+# ===================================================================
+
+
+def test_default_action_id_non_empty() -> None:
+    """When action_id_factory is None, action_id must still be non-empty."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=None,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    _run_async(run())
+    assert confirmation.create_count == 1
+    payload = confirmation.received_payloads[0]
+    action_id = payload.get("action_id", "")
+    assert isinstance(action_id, str)
+    assert len(action_id) > 0, "action_id must be non-empty even without explicit factory"
+
+
+def test_consecutive_pending_actions_different_ids() -> None:
+    """Two pending actions (across two chat calls) must have different action_ids."""
+    from app.services.ai_chat_service import AIChatService
+
+    def make_service() -> AIChatService:
+        c = FakeAIActionConfirmation()
+        return AIChatService(
+            deepseek_client_factory=lambda: FakeDeepSeekClient([SINGLE_WRITE_RESPONSE]),
+            mcp_adapter_factory=FakeMCPToolAdapter,
+            action_confirmation=c,
+            action_id_factory=None,
+        ), c
+
+    async def run(service: AIChatService) -> dict[str, object]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    svc1, conf1 = make_service()
+    svc2, conf2 = make_service()
+
+    _run_async(run(svc1))
+    _run_async(run(svc2))
+
+    id1 = conf1.received_payloads[0]["action_id"]
+    id2 = conf2.received_payloads[0]["action_id"]
+    assert id1 != id2, "Two pending actions must have different action_ids"
+
+
+def test_model_action_id_not_used_in_token() -> None:
+    """Model-supplied action_id in arguments must not override server action_id."""
+    from app.services.ai_chat_service import AIChatService
+
+    model_override_response: dict[str, Any] = {
+        "content": None,
+        "tool_calls": [
+            {"id": "cw", "type": "function", "function": {
+                "name": "add_student",
+                "arguments": '{"student_number": "0001", "name": "李四", "action_id": "fake-from-model"}',
+            }},
+        ],
+    }
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([model_override_response])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: "server-generated-id",
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    _run_async(run())
+
+    payload = confirmation.received_payloads[0]
+    # Server-generated action_id must be at top level
+    assert payload["action_id"] == "server-generated-id"
+    # Model's "action_id" must be inside arguments, not at top level
+    assert payload.get("action_id") != "fake-from-model"
+    # The model-supplied action_id should be in arguments
+    assert payload["arguments"].get("action_id") == "fake-from-model"
+
+
+# ===================================================================
+# 19. Invalid arguments — no token, safe error
+# ===================================================================
+
+INVALID_JSON_ARGS: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cw", "type": "function", "function": {
+            "name": "add_student",
+            "arguments": "not-valid-json-at-all",
+        }},
+    ],
+}
+
+LIST_ARGS: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cw", "type": "function", "function": {
+            "name": "add_student",
+            "arguments": "[1, 2, 3]",
+        }},
+    ],
+}
+
+NULL_ARGS: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cw", "type": "function", "function": {
+            "name": "add_student",
+            "arguments": "null",
+        }},
+    ],
+}
+
+STRING_ARGS: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cw", "type": "function", "function": {
+            "name": "add_student",
+            "arguments": '"just-a-string"',
+        }},
+    ],
+}
+
+NUMBER_ARGS: dict[str, Any] = {
+    "content": None,
+    "tool_calls": [
+        {"id": "cw", "type": "function", "function": {
+            "name": "add_student",
+            "arguments": "42",
+        }},
+    ],
+}
+
+
+def _assert_invalid_arguments_result(result: dict[str, object]) -> None:
+    """Assert that invalid arguments produce a safe error, not a token."""
+    assert result.get("success") is False
+    assert result.get("requires_confirmation") is not True
+    assert "confirmation_token" not in result or result.get("confirmation_token") in (None, "")
+    assert "pending_action" not in result
+
+
+def test_invalid_json_arguments_no_token() -> None:
+    """Invalid JSON arguments must not create a token."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([INVALID_JSON_ARGS])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    _assert_invalid_arguments_result(result)
+    assert confirmation.create_count == 0
+    assert adapter.invoke_count == 0
+
+
+def test_invalid_json_safe_error_message() -> None:
+    """Error message must not leak arguments, student data, or API Key."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([INVALID_JSON_ARGS])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    reply = str(result.get("reply", ""))
+    assert "not-valid-json" not in reply
+    assert "新增" in reply or "参数" in reply
+
+
+def test_arguments_list_no_token() -> None:
+    """JSON array arguments must not create a token."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([LIST_ARGS])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    _assert_invalid_arguments_result(result)
+    assert confirmation.create_count == 0
+    assert adapter.invoke_count == 0
+
+
+def test_arguments_null_no_token() -> None:
+    """JSON null arguments must not create a token."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([NULL_ARGS])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    _assert_invalid_arguments_result(result)
+    assert confirmation.create_count == 0
+    assert adapter.invoke_count == 0
+
+
+def test_arguments_string_no_token() -> None:
+    """JSON string arguments must not create a token."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([STRING_ARGS])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    _assert_invalid_arguments_result(result)
+    assert confirmation.create_count == 0
+    assert adapter.invoke_count == 0
+
+
+def test_arguments_number_no_token() -> None:
+    """JSON number arguments must not create a token."""
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([NUMBER_ARGS])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+    _assert_invalid_arguments_result(result)
+    assert confirmation.create_count == 0
+    assert adapter.invoke_count == 0

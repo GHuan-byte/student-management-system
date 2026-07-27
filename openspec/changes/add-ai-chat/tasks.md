@@ -143,7 +143,7 @@
 - [x] 2.6.5c RED/GREEN: multiple reads + write — no tool executed
 - [x] 2.6.5d RED/GREEN: multiple writes — no tool executed
 - [x] 2.6.5e REFACTOR: Pre-scan tool_names before execution loop
-- [ ] 2.6.6 Multiple write tool calls return ai_multiple_write_actions
+- [x] 2.6.6 Multiple write tool calls return ai_multiple_write_actions
 - [x] 2.6.6a VERIFY: Multiple write tool calls fail closed before execution
 <br>Current behavior rejects the entire write-tool batch before execution.
 No MCP tool is executed and no partial action occurs.
@@ -162,7 +162,13 @@ confirmation-token orchestration.
 - [x] 2.6.11a VERIFY: Business error → safe Tool Result, service continues
 - [x] 2.6.11b VERIFY: mcp_tool_error → safe Tool Result, service continues
 - [x] 2.6.11c VERIFY: Error in round 1 does not block round 2
-- [ ] 2.6.12 RED: Test write tool returns pending action instead of executing
+- [x] 2.6.12 RED: Test write tool returns pending action instead of executing
+- [x] 2.6.6 Multiple write tools return ai_multiple_write_actions
+- [x] 2.6.8 At most one Pending Action per response
+- [x] 2.6.12a–: Single write → pending action with token
+- [x] 2.6.6a–: Multiple writes → AIMultipleWriteActionsError
+- [x] 2.6.8a–: Mixed batch → at most one pending action
+- [x] 2.6.12/6/8 REFACTOR: Write batch pre-scan → 0/1/many dispatch
 - [ ] 2.6.13 RED: Test confirmed write executes exactly once
 - [ ] 2.6.14 RED: Test cancelled write does not execute
 - [ ] 2.6.15 RED: Test reasoning_content passes through internally during Tool Loop

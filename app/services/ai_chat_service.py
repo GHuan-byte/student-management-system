@@ -8,19 +8,22 @@ Each ``chat()`` call:
    a. Calls ``DeepSeekClient.create_chat_completion()`` with tools.
    b. If the response is plain text (no tool_calls), returns it.
    c. Checks the tool round count against ``max_tool_rounds``.
-   d. Pre-scans for write tools — rejects the entire batch if found.
-   e. Executes or safely handles each tool in the batch.
-   f. Appends assistant + tool-result messages and loops.
+   d. Counts write tools in the batch:
+      - 0 writes → execute read/unknown tools and continue loop
+      - 1 write → generate Pending Action with signed token
+      - 2+ writes → raise ``AIMultipleWriteActionsError``
+   e. Appends assistant + tool-result messages and loops.
 """
 
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any, Callable
 
 from app.services.ai_errors import (
+    AIMultipleWriteActionsError,
     AIToolRoundLimitError,
-    AIWriteConfirmationRequiredError,
 )
 
 # ---------------------------------------------------------------------------
@@ -45,6 +48,18 @@ READ_TOOL_NAMES: frozenset[str] = frozenset({
 
 KNOWN_TOOL_NAMES: frozenset[str] = READ_TOOL_NAMES | WRITE_TOOL_NAMES
 
+# ---------------------------------------------------------------------------
+# Summary mapping
+# ---------------------------------------------------------------------------
+
+TOOL_SUMMARIES: dict[str, str] = {
+    "add_student": "新增学生",
+    "update_student": "修改学生",
+    "upsert_student": "新增或修改学生",
+    "delete_student": "删除学生",
+    "batch_delete_students": "批量删除学生",
+}
+
 
 class AIChatService:
     """Orchestrates DeepSeek LLM calls with MCP student tool execution.
@@ -54,6 +69,8 @@ class AIChatService:
         service = AIChatService(
             deepseek_client_factory=lambda: DeepSeekClient(config),
             mcp_adapter_factory=lambda: MCPToolAdapter(database_path=...),
+            action_confirmation=AIActionConfirmation(...),
+            action_id_factory=uuid.uuid4,
             max_tool_rounds=5,
         )
         result = await service.chat(messages)
@@ -64,10 +81,14 @@ class AIChatService:
         deepseek_client_factory: Callable[[], Any],
         mcp_adapter_factory: Callable[[], Any],
         *,
+        action_confirmation: Any | None = None,
+        action_id_factory: Callable[[], str] | None = None,
         max_tool_rounds: int = 5,
     ) -> None:
         self._deepseek_factory = deepseek_client_factory
         self._adapter_factory = mcp_adapter_factory
+        self._action_confirmation = action_confirmation
+        self._action_id_factory = action_id_factory or (lambda: uuid.uuid4().hex)
         self._max_tool_rounds = max_tool_rounds
 
     async def chat(
@@ -101,25 +122,30 @@ class AIChatService:
 
                 tool_calls = response.get("tool_calls")
                 if not tool_calls:
-                    # Plain text response — done
                     return self._text_result(response)
 
-                # --- Round-limit check (before executing this batch) ---
+                # --- Round-limit check ---
                 if tool_rounds >= self._max_tool_rounds:
                     raise AIToolRoundLimitError()
 
                 tool_rounds += 1
 
-                # --- Pre-scan: reject any write tool in this batch ---
-                tool_names = [tc["function"]["name"] for tc in tool_calls]
-                if any(name in WRITE_TOOL_NAMES for name in tool_names):
-                    raise AIWriteConfirmationRequiredError()
+                # --- Count write tools ---
+                write_calls = [
+                    tc for tc in tool_calls
+                    if tc["function"]["name"] in WRITE_TOOL_NAMES
+                ]
 
-                # --- Build the assistant message ---
+                if len(write_calls) > 1:
+                    raise AIMultipleWriteActionsError()
+
+                if len(write_calls) == 1:
+                    return self._build_pending_action(write_calls[0])
+
+                # --- No write tools — execute read/unknown and loop ---
                 assistant_msg = self._build_assistant_message(response)
                 internal_messages.append(assistant_msg)
 
-                # --- Execute / handle each tool ---
                 for tc in tool_calls:
                     tool_name = tc["function"]["name"]
                     arguments = tc["function"]["arguments"]
@@ -146,6 +172,64 @@ class AIChatService:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _build_pending_action(
+        self,
+        tool_call: dict[str, Any],
+    ) -> dict[str, object]:
+        """Build a Pending Action response for a single write tool.
+
+        Creates a signed confirmation token and returns the pending-action
+        structure without executing any MCP tool.
+        """
+        tool_name = tool_call["function"]["name"]
+        arguments_raw = tool_call["function"]["arguments"]
+
+        # Parse arguments to a dict for the token payload
+        try:
+            if isinstance(arguments_raw, str):
+                arguments = json.loads(arguments_raw)
+            else:
+                arguments = arguments_raw
+        except (json.JSONDecodeError, TypeError):
+            return {
+                "success": False,
+                "reply": "工具参数格式无效",
+            }
+
+        # Non-dict arguments are invalid — reject without creating a token
+        if not isinstance(arguments, dict):
+            return {
+                "success": False,
+                "reply": "工具参数格式无效",
+            }
+
+        action_id = self._action_id_factory()
+
+        # Build token payload
+        payload: dict[str, object] = {
+            "tool_name": tool_name,
+            "arguments": arguments,
+            "action_id": action_id,
+        }
+
+        confirmation_token = ""
+        if self._action_confirmation is not None:
+            confirmation_token = self._action_confirmation.create_token(payload)
+
+        summary = TOOL_SUMMARIES.get(tool_name, tool_name)
+        safe_arguments = json.dumps(arguments, ensure_ascii=False)
+
+        return {
+            "success": True,
+            "reply": f"需要确认后才能执行：{summary}",
+            "requires_confirmation": True,
+            "confirmation_token": confirmation_token,
+            "pending_action": {
+                "summary": summary,
+                "safe_arguments": safe_arguments,
+            },
+        }
 
     @staticmethod
     def _text_result(response: dict[str, Any]) -> dict[str, object]:
