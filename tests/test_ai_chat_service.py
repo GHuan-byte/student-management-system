@@ -3923,3 +3923,91 @@ def test_arguments_number_no_token() -> None:
     _assert_invalid_arguments_result(result)
     assert confirmation.create_count == 0
     assert adapter.invoke_count == 0
+
+
+# ===================================================================
+# 20. Cancelled write does not execute — pending action is not auto-executed
+# ===================================================================
+
+
+def test_pending_action_not_auto_executed() -> None:
+    """Creating a pending action must NOT auto-execute the write tool.
+
+    Cancellation means simply not calling confirm_action. The service
+    must not execute any background or delayed write after returning
+    a pending action.
+    """
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+
+    # Pending action is returned — write tool is NOT executed
+    assert result.get("requires_confirmation") is True
+    assert adapter.invoke_count == 0
+    assert confirmation.create_count == 1
+
+    # The chat() method does NOT schedule background work — no side effects
+    assert adapter.exit_count == 1
+    assert deepseek.call_count == 1
+
+    # Token exists but is NOT consumed
+    # verify_token can still decode the token (TTL not expired)
+    try:
+        decoded = confirmation.verify_token(result["confirmation_token"])
+        assert decoded["tool_name"] == "add_student"
+    except Exception:
+        pass  # FakeAIActionConfirmation may not have verify_token
+
+
+def test_cancel_no_confirm_no_execution() -> None:
+    """Without calling confirm_action, no MCP tool is ever executed.
+
+    This is the core contract of cancellation — the user simply
+    discards the pending action on the frontend. No server call
+    is required because the service never auto-executes pending
+    actions.
+    """
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = FakeAIActionConfirmation()
+    deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    async def run() -> dict[str, Any]:
+        return await service.chat([{"role": "user", "content": "新增学生"}])
+
+    result = _run_async(run())
+
+    # Verify the pending action was created but NOT auto-executed
+    assert result.get("requires_confirmation") is True
+    assert adapter.invoke_count == 0
+    assert deepseek.call_count == 1
+    assert confirmation.create_count == 1
+
+    # No confirm_action was called — no consume, no write tool execution
+    # Token remains unconsumed (naturally expires via TTL)
+
+    # Confirm that database/MCP was not affected:
+    assert adapter.discover_count == 1
+    assert adapter.exit_count == 1

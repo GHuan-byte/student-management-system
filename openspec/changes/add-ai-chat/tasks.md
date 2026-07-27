@@ -175,7 +175,16 @@ confirmation-token orchestration.
     - [x] VERIFY: replay does not re-execute
     - [x] VERIFY: MCP failure remains consumed
     - [x] REFACTOR: isolate confirmed-write orchestration
-- [ ] 2.6.14 RED: Test cancelled write does not execute
+- [ ] 2.6.14 Cancelled write does not execute
+    - [x] 2.6.14a VERIFY: Pending actions are never executed automatically
+    - [x] 2.6.14b VERIFY: No confirmation call means no MCP execution
+    - [ ] 2.6.14c Frontend cancellation discards the pending action and displays 操作已取消 (section 2.8)
+
+  > **Cancellation semantics:**
+  > - Cancel does NOT consume or revoke the token.
+  > - The token expires naturally according to its TTL (default 120s).
+  > - No backend ``cancel_action`` API is currently defined.
+  > - The frontend must locally discard the pending action on cancel.
 - [ ] 2.6.15 RED: Test reasoning_content passes through internally during Tool Loop
 - [ ] 2.6.16 RED: Test reasoning_content not returned to user in final reply
 - [ ] 2.6.17 RED: Test MCP raw diagnostic objects not returned to user
