@@ -169,7 +169,12 @@ confirmation-token orchestration.
 - [x] 2.6.6a–: Multiple writes → AIMultipleWriteActionsError
 - [x] 2.6.8a–: Mixed batch → at most one pending action
 - [x] 2.6.12/6/8 REFACTOR: Write batch pre-scan → 0/1/many dispatch
-- [ ] 2.6.13 RED: Test confirmed write executes exactly once
+- [x] 2.6.13 RED: Test confirmed write executes exactly once
+    - [x] RED: confirmed Token invokes write tool once
+    - [x] GREEN: consume before MCP execution
+    - [x] VERIFY: replay does not re-execute
+    - [x] VERIFY: MCP failure remains consumed
+    - [x] REFACTOR: isolate confirmed-write orchestration
 - [ ] 2.6.14 RED: Test cancelled write does not execute
 - [ ] 2.6.15 RED: Test reasoning_content passes through internally during Tool Loop
 - [ ] 2.6.16 RED: Test reasoning_content not returned to user in final reply

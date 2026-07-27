@@ -22,6 +22,8 @@ import uuid
 from typing import Any, Callable
 
 from app.services.ai_errors import (
+    AIConfirmationInvalidPayloadError,
+    AIConfirmationNotConfiguredError,
     AIMultipleWriteActionsError,
     AIToolRoundLimitError,
 )
@@ -169,9 +171,109 @@ class AIChatService:
                     )
                     internal_messages.append(result_msg)
 
+    async def confirm_action(
+        self,
+        confirmation_token: str,
+    ) -> dict[str, object]:
+        """Consume a confirmation token and execute the confirmed write tool.
+
+        Args:
+            confirmation_token: A signed token previously returned by
+                ``_build_pending_action``.
+
+        Returns:
+            A dict with ``success`` and ``reply``.  The result structure
+            is safe for returning to the browser via a Flask route.
+
+        Raises:
+            AIConfirmationNotConfiguredError: If ``action_confirmation``
+                is ``None``.
+            AIConfirmationExpiredError: If the token has exceeded its TTL.
+            AIConfirmationInvalidError: If the token is tampered or malformed.
+            AIConfirmationInvalidPayloadError: If the token payload is
+                structurally invalid or the tool is not a write tool.
+            AIConfirmationReplayError: If the token has already been consumed.
+        """
+        if self._action_confirmation is None:
+            raise AIConfirmationNotConfiguredError()
+
+        # Step 1: consume the token (atomic verify + mark consumed)
+        payload = self._action_confirmation.consume_token(confirmation_token)
+
+        # Step 2: validate payload fields for write execution
+        tool_name = payload.get("tool_name")
+        arguments = payload.get("arguments")
+        action_id = payload.get("action_id")
+
+        self._validate_confirmed_write_payload(
+            tool_name=tool_name,
+            arguments=arguments,
+            action_id=action_id,
+        )
+
+        # Step 3: execute the write tool via MCP
+        async with self._adapter_factory() as adapter:
+            await adapter.discover_tools()
+            result = await adapter.invoke_tool(tool_name, arguments)
+
+        # Step 4: build safe response
+        return self._build_confirmed_action_result(result, tool_name)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_confirmed_write_payload(
+        *,
+        tool_name: Any,
+        arguments: Any,
+        action_id: Any,
+    ) -> None:
+        """Validate that the consumed token payload is safe to execute.
+
+        Checks:
+        - ``tool_name`` is a non-empty string in ``WRITE_TOOL_NAMES``.
+        - ``arguments`` is a dict.
+        - ``action_id`` is a non-empty string.
+
+        Raises:
+            AIConfirmationInvalidPayloadError: If any check fails.
+        """
+        if not isinstance(tool_name, str) or not tool_name:
+            raise AIConfirmationInvalidPayloadError()
+        if tool_name not in WRITE_TOOL_NAMES:
+            raise AIConfirmationInvalidPayloadError()
+        if not isinstance(arguments, dict):
+            raise AIConfirmationInvalidPayloadError()
+        if not isinstance(action_id, str) or not action_id.strip():
+            raise AIConfirmationInvalidPayloadError()
+
+    @staticmethod
+    def _build_confirmed_action_result(
+        result: dict[str, object],
+        tool_name: str,
+    ) -> dict[str, object]:
+        """Build a safe response from the MCP invoke_tool result.
+
+        The response contains a deterministic Chinese reply and the
+        sanitized result data, without raw MCP debug fields.
+        """
+        summary = TOOL_SUMMARIES.get(tool_name, tool_name)
+        success = result.get("success", False)
+        action_result: dict[str, object] = {
+            "success": success,
+        }
+        if success and "data" in result:
+            action_result["data"] = result["data"]
+
+        return {
+            "success": True,
+            "reply": f"{summary}成功。",
+            "requires_confirmation": False,
+            "pending_action": None,
+            "action_result": action_result,
+        }
 
     def _build_pending_action(
         self,
