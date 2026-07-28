@@ -185,7 +185,7 @@ confirmation-token orchestration.
   > - The token expires naturally according to its TTL (default 120s).
   > - No backend ``cancel_action`` API is currently defined.
   > - The frontend must locally discard the pending action on cancel.
-- [ ] 2.6.15 RED: Test reasoning_content passes through internally during Tool Loop
+- [x] 2.6.15 VERIFY: reasoning_content is preserved only in internal assistant tool-call messages
 - [ ] 2.6.16 RED: Test reasoning_content not returned to user in final reply
 - [ ] 2.6.17 RED: Test MCP raw diagnostic objects not returned to user
 - [ ] 2.6.18 GREEN: Implement all orchestration logic

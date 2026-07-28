@@ -6,6 +6,7 @@ RED phase — AIChatService does not exist yet.
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 from typing import Any
 
@@ -663,6 +664,47 @@ def test_tool_call_assistant_keeps_reasoning_content() -> None:
     second_msgs = deepseek.calls[1]
     assistant = next(m for m in second_msgs if m.get("role") == "assistant")
     assert assistant.get("reasoning_content") == "内部推理过程"
+
+
+def test_tool_call_reasoning_is_internal_and_caller_messages_unchanged() -> None:
+    """A tool round keeps reasoning only on its internal assistant message."""
+    from app.services.ai_chat_service import AIChatService
+
+    response = {
+        "content": None,
+        "reasoning_content": "round-one reasoning",
+        "tool_calls": [
+            {
+                "id": "reasoning-call",
+                "type": "function",
+                "function": {"name": "count_students", "arguments": "{}"},
+            }
+        ],
+    }
+    caller_messages: list[dict[str, Any]] = [
+        {"role": "user", "content": "How many students are there?"}
+    ]
+    original_messages = copy.deepcopy(caller_messages)
+    deepseek = FakeDeepSeekClient([response, {"content": "There are 42 students."}])
+    adapter = FakeMCPToolAdapter()
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    _run_async(service.chat(caller_messages))
+
+    assert caller_messages == original_messages
+    second_round = deepseek.calls[1]
+    assistant = next(message for message in second_round if message["role"] == "assistant")
+    tool_result = next(message for message in second_round if message["role"] == "tool")
+    assert assistant == {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": response["tool_calls"],
+        "reasoning_content": "round-one reasoning",
+    }
+    assert "reasoning_content" not in tool_result
 
 
 def test_tool_call_second_includes_tool_result() -> None:
