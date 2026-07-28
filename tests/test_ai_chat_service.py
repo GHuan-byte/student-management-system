@@ -956,6 +956,8 @@ def test_write_tool_not_executed() -> None:
     service = AIChatService(
         deepseek_client_factory=lambda: deepseek,
         mcp_adapter_factory=lambda: adapter,
+        action_confirmation=FakeAIActionConfirmation(),
+        action_id_factory=lambda: ACTION_ID,
     )
 
     async def run() -> dict[str, Any]:
@@ -990,6 +992,8 @@ def test_write_tool_returns_controlled_error() -> None:
     service = AIChatService(
         deepseek_client_factory=lambda: deepseek,
         mcp_adapter_factory=lambda: adapter,
+        action_confirmation=FakeAIActionConfirmation(),
+        action_id_factory=lambda: ACTION_ID,
     )
 
     async def run() -> dict[str, Any]:
@@ -1478,6 +1482,8 @@ def test_mixed_read_then_write_no_partial_execution() -> None:
     service = AIChatService(
         deepseek_client_factory=lambda: deepseek,
         mcp_adapter_factory=lambda: adapter,
+        action_confirmation=FakeAIActionConfirmation(),
+        action_id_factory=lambda: ACTION_ID,
     )
 
     async def run() -> dict[str, Any]:
@@ -1499,6 +1505,8 @@ def test_mixed_write_then_read_no_execution() -> None:
     service = AIChatService(
         deepseek_client_factory=lambda: deepseek,
         mcp_adapter_factory=lambda: adapter,
+        action_confirmation=FakeAIActionConfirmation(),
+        action_id_factory=lambda: ACTION_ID,
     )
 
     async def run() -> dict[str, Any]:
@@ -1532,6 +1540,8 @@ def test_mixed_multiple_reads_one_write_no_execution() -> None:
     service = AIChatService(
         deepseek_client_factory=lambda: deepseek,
         mcp_adapter_factory=lambda: adapter,
+        action_confirmation=FakeAIActionConfirmation(),
+        action_id_factory=lambda: ACTION_ID,
     )
 
     async def run() -> dict[str, Any]:
@@ -1878,6 +1888,8 @@ def test_multi_write_single_write_still_works() -> None:
     service = AIChatService(
         deepseek_client_factory=lambda: deepseek,
         mcp_adapter_factory=lambda: adapter,
+        action_confirmation=FakeAIActionConfirmation(),
+        action_id_factory=lambda: ACTION_ID,
     )
 
     async def run() -> dict[str, Any]:
@@ -2236,6 +2248,8 @@ def test_unknown_mixed_with_write_still_rejected() -> None:
     service = AIChatService(
         deepseek_client_factory=lambda: deepseek,
         mcp_adapter_factory=lambda: adapter,
+        action_confirmation=FakeAIActionConfirmation(),
+        action_id_factory=lambda: ACTION_ID,
     )
 
     async def run() -> dict[str, Any]:
@@ -2548,6 +2562,8 @@ def test_multi_round_write_in_round2_rejected() -> None:
     service = AIChatService(
         deepseek_client_factory=lambda: deepseek,
         mcp_adapter_factory=lambda: adapter,
+        action_confirmation=FakeAIActionConfirmation(),
+        action_id_factory=lambda: ACTION_ID,
     )
 
     async def run() -> dict[str, Any]:
@@ -3281,6 +3297,53 @@ def test_single_write_pending_action_safe_arguments() -> None:
     assert "safe_arguments" in result.get("pending_action", {})
 
 
+def test_pending_action_safe_arguments_exclude_forbidden_fields() -> None:
+    """The browser-facing preview must not echo internal token fields."""
+    from app.services.ai_chat_service import AIChatService
+
+    write_with_internal_fields = {
+        "content": None,
+        "tool_calls": [
+            {
+                "id": "safe-preview",
+                "type": "function",
+                "function": {
+                    "name": "add_student",
+                    "arguments": json.dumps(
+                        {
+                            "student_number": "0001",
+                            "name": "李四",
+                            "api_key": "must-not-reach-browser",
+                            "details": {
+                                "Authorization": "must-not-reach-browser",
+                                "reasoning_content": "internal reasoning",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            }
+        ],
+    }
+    confirmation = FakeAIActionConfirmation()
+    service = AIChatService(
+        deepseek_client_factory=lambda: FakeDeepSeekClient([write_with_internal_fields]),
+        mcp_adapter_factory=FakeMCPToolAdapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    result = _run_async(service.chat([{"role": "user", "content": "新增学生"}]))
+
+    preview = result["pending_action"]["safe_arguments"]
+    assert "student_number" in preview
+    assert "李四" in preview
+    assert "api_key" not in preview.lower()
+    assert "authorization" not in preview.lower()
+    assert "reasoning_content" not in preview.lower()
+    assert "must-not-reach-browser" not in preview
+
+
 def test_single_write_no_reasoning_in_result() -> None:
     """Pending action result must not contain reasoning_content."""
     from app.services.ai_chat_service import AIChatService
@@ -3643,8 +3706,9 @@ def test_multiple_writes_no_confirmation_token() -> None:
 
 
 def test_confirmation_not_configured_fail_closed() -> None:
-    """If confirmation is None, service must not execute tools."""
+    """If confirmation is absent, a write request fails before any execution."""
     from app.services.ai_chat_service import AIChatService
+    from app.services.ai_errors import AIConfirmationNotConfiguredError
 
     deepseek = FakeDeepSeekClient([SINGLE_WRITE_RESPONSE])
     adapter = FakeMCPToolAdapter()
@@ -3659,8 +3723,12 @@ def test_confirmation_not_configured_fail_closed() -> None:
     async def run() -> dict[str, Any]:
         return await service.chat([{"role": "user", "content": "新增学生"}])
 
-    _run_async(run())
+    with pytest.raises(AIConfirmationNotConfiguredError):
+        _run_async(run())
     assert adapter.invoke_count == 0
+    assert deepseek.call_count == 1
+    assert adapter.enter_count == 1
+    assert adapter.exit_count == 1
 
 
 # ===================================================================

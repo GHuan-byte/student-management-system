@@ -21,6 +21,7 @@ import json
 import uuid
 from typing import Any, Callable
 
+from app.services.ai_action_confirmation import FORBIDDEN_TOKEN_KEYS
 from app.services.ai_errors import (
     AIConfirmationInvalidPayloadError,
     AIConfirmationNotConfiguredError,
@@ -306,6 +307,9 @@ class AIChatService:
                 "reply": "工具参数格式无效",
             }
 
+        if self._action_confirmation is None:
+            raise AIConfirmationNotConfiguredError()
+
         action_id = self._action_id_factory()
 
         # Build token payload
@@ -315,12 +319,12 @@ class AIChatService:
             "action_id": action_id,
         }
 
-        confirmation_token = ""
-        if self._action_confirmation is not None:
-            confirmation_token = self._action_confirmation.create_token(payload)
+        confirmation_token = self._action_confirmation.create_token(payload)
 
         summary = TOOL_SUMMARIES.get(tool_name, tool_name)
-        safe_arguments = json.dumps(arguments, ensure_ascii=False)
+        safe_arguments = json.dumps(
+            self._redact_safe_arguments(arguments), ensure_ascii=False,
+        )
 
         return {
             "success": True,
@@ -332,6 +336,21 @@ class AIChatService:
                 "safe_arguments": safe_arguments,
             },
         }
+
+    @staticmethod
+    def _redact_safe_arguments(value: Any) -> Any:
+        """Remove fields forbidden from browser-facing pending-action previews."""
+        if isinstance(value, dict):
+            return {
+                key: AIChatService._redact_safe_arguments(item)
+                for key, item in value.items()
+                if not isinstance(key, str) or key.lower() not in FORBIDDEN_TOKEN_KEYS
+            }
+        if isinstance(value, list):
+            return [AIChatService._redact_safe_arguments(item) for item in value]
+        if isinstance(value, tuple):
+            return [AIChatService._redact_safe_arguments(item) for item in value]
+        return value
 
     @staticmethod
     def _text_result(response: dict[str, Any]) -> dict[str, object]:
