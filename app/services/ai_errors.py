@@ -81,6 +81,12 @@ class AIConfirmationReplayError(AIClientError):
     safe_message = "确认请求已被使用，请重新发起"
 
 
+class AIConfirmationExecutionError(AIClientError):
+    """Raised when a consumed confirmation cannot complete its MCP write."""
+    code = "ai_confirmation_execution_failed"
+    safe_message = "确认操作执行失败，请重新发起"
+
+
 class AIWriteConfirmationRequiredError(AIClientError):
     """Raised when the model requests a write tool without prior confirmation."""
     code = "ai_write_confirmation_required"

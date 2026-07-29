@@ -169,6 +169,49 @@ class FakeMCPToolAdapter:
         self.exit_count += 1
 
 
+class InvokeFailingAdapter(FakeMCPToolAdapter):
+    """Fake adapter whose write invocation raises an internal exception."""
+
+    async def invoke_tool(
+        self, tool_name: str, arguments: str | dict[str, object],
+    ) -> dict[str, object]:
+        self.invoke_count += 1
+        raise RuntimeError("token=secret-token name=张三 traceback=private")
+
+
+class DiscoveryFailingAdapter(FakeMCPToolAdapter):
+    """Fake adapter whose discovery fails after the token is consumed."""
+
+    async def discover_tools(self) -> list[dict[str, Any]]:
+        self.discover_count += 1
+        raise RuntimeError("database_path=private")
+
+
+class ExitFailingAdapter(FakeMCPToolAdapter):
+    """Fake adapter whose context exit fails after one write execution."""
+
+    async def __aexit__(self, *args: Any) -> None:
+        self.exit_count += 1
+        raise RuntimeError("mcp_session=private")
+
+
+class BlockingInvokeFailingAdapter(InvokeFailingAdapter):
+    """Lets a concurrent replay attempt race a failed first invocation."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def invoke_tool(
+        self, tool_name: str, arguments: str | dict[str, object],
+    ) -> dict[str, object]:
+        self.invoke_count += 1
+        self.started.set()
+        await self.release.wait()
+        raise RuntimeError("internal write failure")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -750,6 +793,102 @@ def test_mcp_error_adapter_exits_normally() -> None:
     _run_async(run())
     assert fak.enter_count == 1
     assert fak.exit_count == 1
+
+
+def test_invoke_exception_keeps_token_consumed_and_is_safe() -> None:
+    """A failed write cannot restore its token or leak internal exception text."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_errors import AIClientError
+
+    adapter = InvokeFailingAdapter()
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=TTL_SECONDS)
+    svc, deepseek, fak = _make_service(confirmation=confirmation, adapter=adapter)
+    token = _make_token(confirmation, WRITE_PAYLOAD)
+
+    with pytest.raises(AIClientError) as excinfo:
+        _run_async(svc.confirm_action(token))
+
+    assert all(value not in str(excinfo.value) for value in ("secret-token", "张三", "traceback"))
+    assert fak.invoke_count == 1
+    assert deepseek.call_count == 0
+    with pytest.raises(AIConfirmationReplayError) as replay:
+        _run_async(svc.confirm_action(token))
+    assert replay.value.code == "ai_confirmation_replayed"
+    assert fak.enter_count == 1
+    assert fak.discover_count == 1
+    assert fak.invoke_count == 1
+
+
+def test_discovery_exception_keeps_token_consumed() -> None:
+    """Discovery failure after consumption must not create another MCP session."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_errors import AIClientError
+
+    adapter = DiscoveryFailingAdapter()
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=TTL_SECONDS)
+    svc, deepseek, fak = _make_service(confirmation=confirmation, adapter=adapter)
+    token = _make_token(confirmation, WRITE_PAYLOAD)
+
+    with pytest.raises(AIClientError):
+        _run_async(svc.confirm_action(token))
+    assert fak.invoke_count == 0
+    assert deepseek.call_count == 0
+    with pytest.raises(AIConfirmationReplayError):
+        _run_async(svc.confirm_action(token))
+    assert fak.enter_count == 1
+    assert fak.discover_count == 1
+
+
+def test_adapter_exit_exception_keeps_token_consumed() -> None:
+    """Exit failure after the write must not allow a second write execution."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_errors import AIClientError
+
+    adapter = ExitFailingAdapter()
+    confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=TTL_SECONDS)
+    svc, deepseek, fak = _make_service(confirmation=confirmation, adapter=adapter)
+    token = _make_token(confirmation, WRITE_PAYLOAD)
+
+    with pytest.raises(AIClientError):
+        _run_async(svc.confirm_action(token))
+    assert fak.invoke_count == 1
+    assert deepseek.call_count == 0
+    with pytest.raises(AIConfirmationReplayError):
+        _run_async(svc.confirm_action(token))
+    assert fak.enter_count == 1
+    assert fak.invoke_count == 1
+
+
+def test_concurrent_confirmation_failed_winner_executes_at_most_once() -> None:
+    """A failed winning request still leaves the concurrent request as replay."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_errors import AIClientError
+
+    async def run() -> tuple[BaseException, BaseException, BlockingInvokeFailingAdapter]:
+        adapter = BlockingInvokeFailingAdapter()
+        confirmation = AIActionConfirmation(secret_key=SAFE_KEY, token_ttl_seconds=TTL_SECONDS)
+        svc, deepseek, fak = _make_service(confirmation=confirmation, adapter=adapter)
+        token = _make_token(confirmation, WRITE_PAYLOAD)
+        winner = asyncio.create_task(svc.confirm_action(token))
+        await adapter.started.wait()
+        try:
+            await svc.confirm_action(token)
+        except BaseException as replay_error:
+            replay = replay_error
+        else:
+            raise AssertionError("concurrent confirmation unexpectedly succeeded")
+        adapter.release.set()
+        try:
+            await winner
+        except BaseException as winner_error:
+            return winner_error, replay, fak
+        raise AssertionError("failed write unexpectedly succeeded")
+
+    winner_error, replay_error, adapter = _run_async(run())
+    assert isinstance(winner_error, AIClientError)
+    assert isinstance(replay_error, AIConfirmationReplayError)
+    assert replay_error.code == "ai_confirmation_replayed"
+    assert adapter.invoke_count == 1
 
 
 # ===================================================================

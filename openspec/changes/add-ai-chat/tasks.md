@@ -106,17 +106,20 @@
 - [x] 2.5.7 RED: Test sequential replay — consumed token cannot be reused
 - [x] 2.5.8 RED: Test concurrent replay — two confirmations for same token, at most one succeeds
 - [x] 2.5.9 RED: Test thread safety — threading.Lock protects consumed-action tracking
-- [ ] 2.5.10 RED: Test MCP write tool failure — token remains consumed, not reusable (via real AIChatService integration)
+- [x] 2.5.10 RED: Test MCP write tool failure — token remains consumed, not reusable (via real AIChatService integration)
+    - [x] 2.5.10a RED: Adapter exceptions after consumption exposed raw internal errors
+    - [x] 2.5.10b GREEN: consumed confirmation failures map to a safe execution error without restoring the token
+    - [x] 2.5.10c VERIFY: business, technical, discovery, exit, and concurrent failed-write paths execute at most once
 - [x] 2.5.11 RED: Test SECRET_KEY missing — write confirmation fail-closed (ai_confirmation_not_configured)
 - [x] 2.5.12 RED: Test SECRET_KEY at development default — write confirmation fail-closed
 - [ ] 2.5.13 RED: Test token not stored in sessionStorage
-- [ ] 2.5.14 GREEN: Implement all confirmation logic with thread safety (blocked by 2.5.10 and 2.5.13)
+- [ ] 2.5.14 GREEN: Implement all confirmation logic with thread safety (blocked by 2.5.13)
 - [x] 2.5.15 REFACTOR: Clean up backend AIActionConfirmation module
 
 > **2.5 Status:** Backend token signing, verification, payload validation,
 > atomic consumption and in-process replay protection are complete.
-> MCP write-failure integration (2.5.10) and browser storage
-> verification (2.5.13) remain pending.
+> MCP write-failure integration (2.5.10) is complete; browser storage
+> verification (2.5.13) remains pending.
 
 ### 2.6 AI Chat Service (TDD: test_ai_chat_service.py)
 

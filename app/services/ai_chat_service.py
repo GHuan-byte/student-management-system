@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 from app.services.ai_action_confirmation import FORBIDDEN_TOKEN_KEYS
 from app.services.ai_errors import (
+    AIConfirmationExecutionError,
     AIConfirmationInvalidPayloadError,
     AIConfirmationNotConfiguredError,
     AIMultipleWriteActionsError,
@@ -236,13 +237,17 @@ class AIChatService:
             action_id=action_id,
         )
 
-        # Step 3: execute the write tool via MCP
-        async with self._adapter_factory() as adapter:
-            await adapter.discover_tools()
-            result = await adapter.invoke_tool(tool_name, arguments)
+        # Step 3: execute the write tool via MCP.  The token has already been
+        # consumed; any failure must leave it consumed and expose no internals.
+        try:
+            async with self._adapter_factory() as adapter:
+                await adapter.discover_tools()
+                result = await adapter.invoke_tool(tool_name, arguments)
 
-        # Step 4: build safe response
-        return self._build_confirmed_action_result(result, tool_name)
+            # Step 4: build safe response
+            return self._build_confirmed_action_result(result, tool_name)
+        except Exception as exc:
+            raise AIConfirmationExecutionError() from exc
 
     # ------------------------------------------------------------------
     # Internal helpers
