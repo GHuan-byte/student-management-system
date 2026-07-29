@@ -257,21 +257,21 @@ confirmation-token orchestration.
 
 ### 2.9 Page Integration Tests (TDD: test_ai_chat_pages.py)
 
-- [ ] 2.9.1 RED: Test Dashboard contains AI Chat icon
-- [ ] 2.9.2 RED: Test students page contains AI Chat icon
-- [ ] 2.9.3 RED: Test icon present in shared base.html template
-- [ ] 2.9.4 RED: Test Chat Panel initially hidden
-- [ ] 2.9.5 RED: Test only icon visible on initial load, panel not auto-opened
-- [ ] 2.9.6 RED: Test API Key not present in HTML
-- [ ] 2.9.7 RED: Test API Base not present in HTML
-- [ ] 2.9.8 RED: Test model name not present in HTML
-- [ ] 2.9.9 RED: Test AI Chat uses ai-chat- CSS prefix
-- [ ] 2.9.10 RED: Test ai_chat.css loaded exactly once
-- [ ] 2.9.11 RED: Test ai_chat.js loaded exactly once
-- [ ] 2.9.12 RED: Test exactly one AI Chat icon per page
-- [ ] 2.9.13 RED: Test exactly one Chat Panel per page
-- [ ] 2.9.14 GREEN: Implement page rendering and verify via Flask test client
-- [ ] 2.9.15 REFACTOR: Clean up tests
+- [x] 2.9.1 RED: Test Dashboard contains AI Chat icon (aggregation verification; implementation already present)
+- [x] 2.9.2 RED: Test students page contains AI Chat icon (aggregation verification; implementation already present)
+- [x] 2.9.3 RED: Test icon present in shared base.html template (aggregation verification; implementation already present)
+- [x] 2.9.4 RED: Test Chat Panel initially hidden (aggregation verification; implementation already present)
+- [x] 2.9.5 RED: Test only icon visible on initial load, panel not auto-opened (aggregation verification; implementation already present)
+- [x] 2.9.6 RED: Test API Key not present in HTML (aggregation verification; implementation already present)
+- [x] 2.9.7 RED: Test API Base not present in HTML (aggregation verification; implementation already present)
+- [x] 2.9.8 RED: Test model name not present in HTML (aggregation verification; implementation already present)
+- [x] 2.9.9 RED: Test AI Chat uses ai-chat- CSS prefix (aggregation verification; implementation already present)
+- [x] 2.9.10 RED: Test ai_chat.css loaded exactly once (aggregation verification; implementation already present)
+- [x] 2.9.11 RED: Test ai_chat.js loaded exactly once (aggregation verification; implementation already present)
+- [x] 2.9.12 RED: Test exactly one AI Chat icon per page (aggregation verification; implementation already present)
+- [x] 2.9.13 RED: Test exactly one Chat Panel per page (aggregation verification; implementation already present)
+- [x] 2.9.14 GREEN: Implement page rendering and verify via Flask test client
+- [x] 2.9.15 REFACTOR: Clean up tests
 
 ## 3. OpenSpec Conformance Gate
 
