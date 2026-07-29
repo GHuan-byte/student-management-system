@@ -234,18 +234,18 @@ confirmation-token orchestration.
 
 ### 2.8 AI Chat Frontend
 
-- [ ] 2.8.1 Create app/templates/_ai_chat.html with floating icon and panel HTML
-- [ ] 2.8.2 Create app/static/css/ai_chat.css with ai-chat- prefixed styles
-- [ ] 2.8.3 Create app/static/js/ai_chat.js with full chat behavior
-- [ ] 2.8.4 Integrate _ai_chat.html into base.html via {% include %}
-- [ ] 2.8.5 Add ai_chat.css link and ai_chat.js script to base.html only (NOT dashboard.html or students.html)
-- [ ] 2.8.6 Implement floating blue circular icon with SVG chat bubble
-- [ ] 2.8.7 Implement Chat Panel open/close with animation
-- [ ] 2.8.8 Implement message area with user and assistant message rendering
-- [ ] 2.8.9 Implement input with Enter to send, Shift+Enter for newline
-- [ ] 2.8.10 Implement send button with disabled state during request (prevent duplicate send)
-- [ ] 2.8.11 Implement loading indicator during API call
-- [ ] 2.8.12 Implement error display in message area (panel stays open on error)
+- [x] 2.8.1 Create app/templates/_ai_chat.html with floating icon and panel HTML
+- [x] 2.8.2 Create app/static/css/ai_chat.css with ai-chat- prefixed styles
+- [x] 2.8.3 Create app/static/js/ai_chat.js with full chat behavior
+- [x] 2.8.4 Integrate _ai_chat.html into base.html via {% include %}
+- [x] 2.8.5 Add ai_chat.css link and ai_chat.js script to base.html only (NOT dashboard.html or students.html)
+- [x] 2.8.6 Implement floating blue circular icon with SVG chat bubble
+- [x] 2.8.7 Implement Chat Panel open/close with animation
+- [x] 2.8.8 Implement message area with user and assistant message rendering
+- [x] 2.8.9 Implement input with Enter to send, Shift+Enter for newline
+- [x] 2.8.10 Implement send button with disabled state during request (prevent duplicate send)
+- [x] 2.8.11 Implement loading indicator during API call
+- [x] 2.8.12 Implement error display in message area (panel stays open on error)
 - [ ] 2.8.13 Implement confirmation card for write operations (confirm/cancel buttons)
 - [ ] 2.8.14 Implement sessionStorage save/restore — only user/assistant messages
 - [ ] 2.8.15 Implement clear-session button — removes sessionStorage key

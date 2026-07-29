@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}学生管理系统 V2{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ai_chat.css') }}">
   </head>
   <body class="{% block body_class %}{% endblock %}">
     <header class="topbar">
@@ -43,6 +44,8 @@
       </div>
     </div>
 
+    {% include "_ai_chat.html" %}
+    <script src="{{ url_for('static', filename='js/ai_chat.js') }}" defer></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>
