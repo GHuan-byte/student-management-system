@@ -51,6 +51,30 @@ READ_TOOL_NAMES: frozenset[str] = frozenset({
 
 KNOWN_TOOL_NAMES: frozenset[str] = READ_TOOL_NAMES | WRITE_TOOL_NAMES
 
+FORBIDDEN_PUBLIC_ACTION_RESULT_KEYS: frozenset[str] = (
+    FORBIDDEN_TOKEN_KEYS
+    | frozenset({
+        "structured_content",
+        "parsed_text",
+        "raw_content",
+        "content_blocks",
+        "traceback",
+        "exception",
+        "exception_repr",
+        "command",
+        "argv",
+        "cwd",
+        "connection",
+        "connections",
+        "session",
+        "server_url",
+        "transport",
+        "stdout",
+        "stderr",
+        "environment",
+    })
+)
+
 # ---------------------------------------------------------------------------
 # Summary mapping
 # ---------------------------------------------------------------------------
@@ -266,7 +290,9 @@ class AIChatService:
             "success": success,
         }
         if success and "data" in result:
-            action_result["data"] = result["data"]
+            action_result["data"] = AIChatService._sanitize_public_action_data(
+                result["data"],
+            )
 
         return {
             "success": True,
@@ -275,6 +301,20 @@ class AIChatService:
             "pending_action": None,
             "action_result": action_result,
         }
+
+    @staticmethod
+    def _sanitize_public_action_data(value: object) -> object:
+        """Remove MCP diagnostics before confirmed results reach callers."""
+        if isinstance(value, dict):
+            return {
+                key: AIChatService._sanitize_public_action_data(item)
+                for key, item in value.items()
+                if not isinstance(key, str)
+                or key.lower() not in FORBIDDEN_PUBLIC_ACTION_RESULT_KEYS
+            }
+        if isinstance(value, list):
+            return [AIChatService._sanitize_public_action_data(item) for item in value]
+        return value
 
     def _build_pending_action(
         self,

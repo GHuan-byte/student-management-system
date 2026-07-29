@@ -3375,6 +3375,63 @@ def test_single_write_no_reasoning_in_result() -> None:
     assert "reasoning_content" not in result
 
 
+def test_confirmed_action_result_strips_raw_mcp_diagnostics() -> None:
+    """Confirmed browser output must keep business data but exclude MCP internals."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = AIActionConfirmation(
+        secret_key="test-confirmation-secret",
+        token_ttl_seconds=300,
+    )
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": True,
+        "data": {
+            "student": {"id": 1, "name": "张三"},
+            "structured_content": {"private": "mcp payload"},
+            "parsed_text": "private parser output",
+            "traceback": "private traceback",
+            "reasoning_content": "private reasoning",
+            "session": "private session",
+            "related_students": [
+                {
+                    "id": 2,
+                    "name": "李四",
+                    "Content_Blocks": "private content blocks",
+                    "server_url": "private server URL",
+                },
+            ],
+        },
+    })
+    service = AIChatService(
+        deepseek_client_factory=lambda: FakeDeepSeekClient([]),
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+    )
+    token = confirmation.create_token({
+        "tool_name": "add_student",
+        "arguments": {"student_number": "0001", "name": "张三"},
+        "action_id": "privacy-test-action",
+    })
+
+    result = _run_async(service.confirm_action(token))
+
+    assert result["action_result"] == {
+        "success": True,
+        "data": {
+            "student": {"id": 1, "name": "张三"},
+            "related_students": [{"id": 2, "name": "李四"}],
+        },
+    }
+    public_output = json.dumps(result, ensure_ascii=False)
+    for forbidden in (
+        "structured_content", "parsed_text", "traceback", "reasoning_content", "session",
+        "content_blocks", "server_url",
+    ):
+        assert forbidden not in public_output
+
+
 def test_update_student_returns_pending_action() -> None:
     """update_student also returns pending action."""
     from app.services.ai_chat_service import AIChatService

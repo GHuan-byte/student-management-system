@@ -186,8 +186,11 @@ confirmation-token orchestration.
   > - No backend ``cancel_action`` API is currently defined.
   > - The frontend must locally discard the pending action on cancel.
 - [x] 2.6.15 VERIFY: reasoning_content is preserved only in internal assistant tool-call messages
-- [ ] 2.6.16 RED: Test reasoning_content not returned to user in final reply
-- [ ] 2.6.17 RED: Test MCP raw diagnostic objects not returned to user
+- [x] 2.6.16 reasoning_content not returned to user in final reply
+- [x] 2.6.17 MCP raw diagnostic objects not returned to user
+    - [x] 2.6.17a RED: confirm_action action_result.data exposed nested MCP diagnostic fields
+    - [x] 2.6.17b GREEN: recursively sanitize user-visible action_result while retaining business data
+    - [x] 2.6.17c VERIFY: regression coverage for nested objects, lists, and case variants
 - [ ] 2.6.18 GREEN: Implement all orchestration logic
 - [ ] 2.6.19 REFACTOR: Clean up AIChatService
 
