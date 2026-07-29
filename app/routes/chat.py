@@ -48,10 +48,26 @@ def _validation_error(message: str):
     )
 
 
-def _normalize_messages(payload: Any) -> list[dict[str, object]]:
-    """Validate every browser message, then return the configured tail."""
+def _require_json_object() -> dict[str, object]:
+    """Return a parsed JSON object or raise a validation-oriented error."""
+    if not request.is_json:
+        raise ValueError("请求必须是 JSON")
+    try:
+        payload = request.get_json(silent=False)
+    except BadRequest as exc:
+        raise ValueError("请求必须是 JSON 对象") from exc
     if not isinstance(payload, dict):
         raise ValueError("请求必须是 JSON 对象")
+    return payload
+
+
+def _run_async(coroutine: Any) -> Any:
+    """Drive one service coroutine for the synchronous Flask request."""
+    return asyncio.run(coroutine)
+
+
+def _normalize_messages(payload: Any) -> list[dict[str, object]]:
+    """Validate every browser message, then return the configured tail."""
     if "messages" not in payload:
         raise ValueError("缺少 messages")
     messages = payload["messages"]
@@ -128,8 +144,6 @@ def _map_ai_error(error: AIClientError):
 
 def _confirmation_token(payload: Any) -> str:
     """Extract the sole browser-controlled field accepted by confirm."""
-    if not isinstance(payload, dict):
-        raise ValueError("请求必须是 JSON 对象")
     token = payload.get("confirmation_token")
     if not isinstance(token, str) or not token.strip():
         raise ValueError("confirmation_token 无效")
@@ -139,17 +153,14 @@ def _confirmation_token(payload: Any) -> str:
 @chat_bp.post("/api/chat")
 def chat():
     """Validate browser messages and delegate one request to AIChatService."""
-    if not request.is_json:
-        return _validation_error("请求必须是 JSON")
     try:
-        payload = request.get_json(silent=False)
-        messages = _normalize_messages(payload)
+        messages = _normalize_messages(_require_json_object())
     except (BadRequest, ValueError, TypeError):
         return _validation_error("聊天请求无效")
 
     service_factory = current_app.extensions["ai_chat_service_factory"]
     try:
-        result = asyncio.run(service_factory().chat(messages))
+        result = _run_async(service_factory().chat(messages))
     except AIClientError as error:
         return _map_ai_error(error)
     except Exception:
@@ -164,16 +175,14 @@ def chat():
 @chat_bp.post("/api/chat/actions/confirm")
 def confirm_chat_action():
     """Confirm one server-signed pending write without invoking chat again."""
-    if not request.is_json:
-        return _validation_error("请求必须是 JSON")
     try:
-        token = _confirmation_token(request.get_json(silent=False))
+        token = _confirmation_token(_require_json_object())
     except (BadRequest, ValueError, TypeError):
         return _validation_error("确认请求无效")
 
     service_factory = current_app.extensions["ai_chat_service_factory"]
     try:
-        result = asyncio.run(service_factory().confirm_action(token))
+        result = _run_async(service_factory().confirm_action(token))
     except AIClientError as error:
         return _map_ai_error(error)
     except Exception:

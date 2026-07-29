@@ -352,3 +352,42 @@ def test_chat_route_paths_are_model_agnostic() -> None:
     assert "/api/chat" in paths
     assert "/api/chat/actions/confirm" in paths
     assert all("deepseek" not in path.lower() and "gpt" not in path.lower() for path in paths)
+
+
+def test_chat_blueprint_registers_each_post_endpoint_once() -> None:
+    service = FakeAIChatService()
+    app = _client(service).application
+    rules = list(app.url_map.iter_rules())
+    chat_rules = [rule for rule in rules if rule.rule in {
+        "/api/chat", "/api/chat/actions/confirm",
+    }]
+    assert len(chat_rules) == 2
+    assert all("POST" in rule.methods for rule in chat_rules)
+    assert all(rule.endpoint.startswith("chat.") for rule in chat_rules)
+
+
+def test_chat_get_requests_use_json_error_without_calling_service() -> None:
+    service = FakeAIChatService()
+    client = _client(service)
+    for path in ("/api/chat", "/api/chat/actions/confirm"):
+        response = client.get(path)
+        assert response.status_code == 405
+        assert response.get_json()["error"]["code"] == "method_not_allowed"
+    assert service.calls == []
+    assert service.confirm_calls == []
+
+
+def test_create_app_can_register_chat_blueprint_repeatedly() -> None:
+    app_one = create_app("testing", load_env=False)
+    app_two = create_app("testing", load_env=False)
+    for app in (app_one, app_two):
+        paths = [rule.rule for rule in app.url_map.iter_rules()]
+        assert paths.count("/api/chat") == 1
+        assert paths.count("/api/chat/actions/confirm") == 1
+
+
+def test_health_and_students_routes_remain_registered() -> None:
+    service = FakeAIChatService()
+    paths = {rule.rule for rule in _client(service).application.url_map.iter_rules()}
+    assert "/api/health" in paths
+    assert "/api/students" in paths

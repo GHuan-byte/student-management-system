@@ -222,9 +222,11 @@ confirmation-token orchestration.
 - [x] 2.7.21 RED: Test confirm returns safe action_result without structured_content/parsed_text
 - [x] 2.7.22 RED: Test confirm does not call DeepSeek again
 - [x] 2.7.23 RED: Test confirm does not accept browser-submitted arguments
-- [ ] 2.7.24 GREEN: Implement all route handling
-- [ ] 2.7.25 Register chat blueprint in app/__init__.py
-- [ ] 2.7.26 REFACTOR: Clean up chat routes
+- [x] 2.7.24 GREEN: Implement all route handling
+- [x] 2.7.25 Register chat blueprint in app/__init__.py
+    - [x] VERIFY: both Chat endpoints are registered once and create_app can be called repeatedly
+- [x] 2.7.26 REFACTOR: Clean up chat routes
+    - [x] REFACTOR: centralize JSON-object validation and synchronous async-service execution
 
 ### 2.8 AI Chat Frontend
 
