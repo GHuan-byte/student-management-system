@@ -194,8 +194,12 @@ confirmation-token orchestration.
     - [x] 2.6.17a RED: confirm_action action_result.data exposed nested MCP diagnostic fields
     - [x] 2.6.17b GREEN: recursively sanitize user-visible action_result while retaining business data
     - [x] 2.6.17c VERIFY: regression coverage for nested objects, lists, and case variants
-- [ ] 2.6.18 GREEN: Implement all orchestration logic
-- [ ] 2.6.19 REFACTOR: Clean up AIChatService
+- [x] 2.6.18 GREEN: Implement all orchestration logic
+    - [x] 2.6.18a VERIFY: all chat, tool, write-confirmation and failure paths are covered
+    - [x] 2.6.18b VERIFY: one request uses one MCP adapter/session and one discovery
+- [x] 2.6.19 REFACTOR: Clean up AIChatService
+    - [x] 2.6.19a REFACTOR: remove obsolete write-confirmation-required error
+    - [x] 2.6.19b VERIFY: no obsolete single-round or write-fail-closed code remains
 
 ### 2.7 Chat Routes (TDD: test_chat_routes.py)
 

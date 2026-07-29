@@ -87,12 +87,6 @@ class AIConfirmationExecutionError(AIClientError):
     safe_message = "确认操作执行失败，请重新发起"
 
 
-class AIWriteConfirmationRequiredError(AIClientError):
-    """Raised when the model requests a write tool without prior confirmation."""
-    code = "ai_write_confirmation_required"
-    safe_message = "该操作需要确认"
-
-
 class AIToolRoundLimitError(AIClientError):
     """Raised when the tool call round count exceeds AI_MAX_TOOL_ROUNDS."""
     code = "ai_tool_round_limit"
