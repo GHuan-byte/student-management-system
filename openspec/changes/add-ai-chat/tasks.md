@@ -199,19 +199,19 @@ confirmation-token orchestration.
 
 ### 2.7 Chat Routes (TDD: test_chat_routes.py)
 
-- [ ] 2.7.1 RED: Test POST /api/chat with valid messages returns reply
-- [ ] 2.7.2 GREEN: Implement chat.py blueprint with POST /api/chat
+- [x] 2.7.1 RED: Test POST /api/chat with valid messages returns reply
+- [x] 2.7.2 GREEN: Implement chat.py blueprint with POST /api/chat
 - [ ] 2.7.3 RED: Test POST /api/chat/actions/confirm with valid token
 - [ ] 2.7.4 GREEN: Implement POST /api/chat/actions/confirm
-- [ ] 2.7.5 RED: Test non-JSON body returns validation_error
-- [ ] 2.7.6 RED: Test empty messages returns validation_error
-- [ ] 2.7.7 RED: Test non-array messages returns validation_error
-- [ ] 2.7.8 RED: Test blank user message returns validation_error
-- [ ] 2.7.9 RED: Test illegal role (system, developer, tool) returns validation_error
-- [ ] 2.7.10 RED: Test last message must be user — returns validation_error otherwise
-- [ ] 2.7.11 RED: Test all messages validated before truncation — illegal messages in tail not skipped
-- [ ] 2.7.12 RED: Test history exceeds max limit is truncated (last user message retained)
-- [ ] 2.7.13 RED: Test message exceeds max length returns validation_error
+- [x] 2.7.5 RED: Test non-JSON body returns validation_error
+- [x] 2.7.6 RED: Test empty messages returns validation_error
+- [x] 2.7.7 RED: Test non-array messages returns validation_error
+- [x] 2.7.8 RED: Test blank user message returns validation_error
+- [x] 2.7.9 RED: Test illegal role (system, developer, tool) returns validation_error
+- [x] 2.7.10 RED: Test last message must be user — returns validation_error otherwise
+- [x] 2.7.11 RED: Test all messages validated before truncation — illegal messages in tail not skipped
+- [x] 2.7.12 RED: Test history exceeds max limit is truncated (last user message retained)
+- [x] 2.7.13 RED: Test message exceeds max length returns validation_error
 - [ ] 2.7.14 RED: Test missing config returns ai_not_configured
 - [ ] 2.7.15 RED: Test upstream auth error returns ai_auth_error
 - [ ] 2.7.16 RED: Test upstream timeout returns ai_timeout

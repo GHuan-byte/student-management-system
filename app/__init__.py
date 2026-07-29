@@ -19,10 +19,12 @@ from app.services.student_service import StudentService
 def register_blueprints(app: Flask) -> None:
     """Register Flask blueprints through a single integration point."""
     from app.routes.health import health_bp
+    from app.routes.chat import chat_bp
     from app.routes.pages import pages_bp
     from app.routes.students import students_bp
 
     app.register_blueprint(health_bp)
+    app.register_blueprint(chat_bp)
     app.register_blueprint(pages_bp)
     app.register_blueprint(students_bp)
 
@@ -30,6 +32,29 @@ def register_blueprints(app: Flask) -> None:
 def create_student_service(app: Flask) -> StudentService:
     """Create a student service from configured application dependencies."""
     return create_student_service_from_database_path(app.config["DATABASE_PATH"])
+
+
+def create_ai_chat_service(app: Flask):
+    """Build a request-scoped AI chat service from server-side config."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_chat_service import AIChatService
+    from app.services.deepseek_client import DeepSeekClient
+    from app.services.mcp_tool_adapter import MCPToolAdapter
+
+    confirmation = None
+    if app.config["AI_WRITE_CONFIRMATION"]:
+        confirmation = AIActionConfirmation(
+            secret_key=app.config["SECRET_KEY"],
+            token_ttl_seconds=app.config["AI_CONFIRMATION_TOKEN_TTL_SECONDS"],
+        )
+    return AIChatService(
+        deepseek_client_factory=lambda: DeepSeekClient(app.config),
+        mcp_adapter_factory=lambda: MCPToolAdapter(
+            database_path=app.config["DATABASE_PATH"],
+        ),
+        action_confirmation=confirmation,
+        max_tool_rounds=app.config["AI_MAX_TOOL_ROUNDS"],
+    )
 
 
 def create_app(
@@ -56,6 +81,7 @@ def create_app(
         instance_path=Path(app.instance_path),
     )
     app.extensions["student_service_factory"] = lambda: create_student_service(app)
+    app.extensions["ai_chat_service_factory"] = lambda: create_ai_chat_service(app)
     configure_logging(app)
     register_error_handlers(app)
     register_cli_commands(app)
