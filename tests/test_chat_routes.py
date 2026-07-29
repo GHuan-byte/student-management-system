@@ -66,6 +66,96 @@ def _assert_validation(response: Any) -> None:
     assert payload["error"]["code"] == "validation_error"
 
 
+def test_unconfigured_chat_returns_503_before_mcp_or_deepseek() -> None:
+    """Route maps the service short-circuit without constructing dependencies."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek_factory_calls = 0
+    adapter_factory_calls = 0
+
+    def deepseek_factory() -> object:
+        nonlocal deepseek_factory_calls
+        deepseek_factory_calls += 1
+        raise AssertionError("DeepSeek must not be created")
+
+    def adapter_factory() -> object:
+        nonlocal adapter_factory_calls
+        adapter_factory_calls += 1
+        raise AssertionError("MCP adapter must not be created")
+
+    app = create_app(
+        "testing",
+        config_overrides={
+            "AI_CONFIGURED": False,
+            "AI_MAX_HISTORY_MESSAGES": 2,
+            "AI_MAX_MESSAGE_LENGTH": 20,
+        },
+        load_env=False,
+    )
+    app.extensions["ai_chat_service_factory"] = lambda: AIChatService(
+        deepseek_client_factory=deepseek_factory,
+        mcp_adapter_factory=adapter_factory,
+        ai_configured=app.config["AI_CONFIGURED"],
+    )
+
+    response = app.test_client().post(
+        "/api/chat", json={"messages": [{"role": "user", "content": "test"}]}
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 503
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "ai_not_configured"
+    assert payload["error"]["code"] != "internal_error"
+    assert all(secret not in str(payload) for secret in ("api_key", "api_base", "model", "traceback"))
+    assert deepseek_factory_calls == 0
+    assert adapter_factory_calls == 0
+
+
+def test_app_factory_short_circuits_unconfigured_chat_before_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The production factory injects AI_CONFIGURED into AIChatService."""
+    import app.services.deepseek_client as deepseek_module
+    import app.services.mcp_tool_adapter as adapter_module
+
+    deepseek_constructions = 0
+    adapter_constructions = 0
+
+    class RaisingDeepSeekClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            nonlocal deepseek_constructions
+            deepseek_constructions += 1
+            raise AssertionError("DeepSeek must not be constructed")
+
+    class RaisingMCPToolAdapter:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            nonlocal adapter_constructions
+            adapter_constructions += 1
+            raise AssertionError("MCP adapter must not be constructed")
+
+    monkeypatch.setattr(deepseek_module, "DeepSeekClient", RaisingDeepSeekClient)
+    monkeypatch.setattr(adapter_module, "MCPToolAdapter", RaisingMCPToolAdapter)
+    app = create_app(
+        "testing",
+        config_overrides={
+            "AI_CONFIGURED": False,
+            "AI_MAX_HISTORY_MESSAGES": 2,
+            "AI_MAX_MESSAGE_LENGTH": 20,
+        },
+        load_env=False,
+    )
+
+    response = app.test_client().post(
+        "/api/chat", json={"messages": [{"role": "user", "content": "test"}]}
+    )
+
+    assert response.status_code == 503
+    assert response.get_json()["error"]["code"] == "ai_not_configured"
+    assert deepseek_constructions == 0
+    assert adapter_constructions == 0
+
+
 def test_post_chat_returns_unified_reply_and_normalized_messages() -> None:
     service = FakeAIChatService()
     client = _client(service)

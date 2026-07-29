@@ -230,6 +230,12 @@ pending confirmation action.
 - [x] 2.7.26 REFACTOR: Clean up chat routes
     - [x] REFACTOR: centralize JSON-object validation and synchronous async-service execution
 
+### 2.7a AI Configuration Short-Circuit Fix
+
+- [x] RED: AI-unconfigured chat attempted MCP discovery before failing
+- [x] GREEN: Short-circuit `ai_not_configured` before DeepSeek or MCP dependency creation
+- [x] VERIFY: `POST /api/chat` returns HTTP 503 without DeepSeek, MCP, or database access
+
 ### 2.8 AI Chat Frontend
 
 - [x] 2.8.1 Create app/templates/_ai_chat.html with floating icon and panel HTML

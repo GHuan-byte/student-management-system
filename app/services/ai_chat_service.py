@@ -27,6 +27,7 @@ from app.services.ai_errors import (
     AIConfirmationInvalidPayloadError,
     AIConfirmationNotConfiguredError,
     AIMultipleWriteActionsError,
+    AINotConfiguredError,
     AIToolRoundLimitError,
 )
 
@@ -112,12 +113,14 @@ class AIChatService:
         action_confirmation: Any | None = None,
         action_id_factory: Callable[[], str] | None = None,
         max_tool_rounds: int = 5,
+        ai_configured: bool = True,
     ) -> None:
         self._deepseek_factory = deepseek_client_factory
         self._adapter_factory = mcp_adapter_factory
         self._action_confirmation = action_confirmation
         self._action_id_factory = action_id_factory or (lambda: uuid.uuid4().hex)
         self._max_tool_rounds = max_tool_rounds
+        self._ai_configured = ai_configured
 
     async def chat(
         self,
@@ -131,6 +134,9 @@ class AIChatService:
         Returns:
             A dict with ``success`` and ``reply`` keys.
         """
+        if not self._ai_configured:
+            raise AINotConfiguredError()
+
         deepseek = self._deepseek_factory()
 
         # A copy so we never mutate the caller's list.

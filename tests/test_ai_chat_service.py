@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from app.services.ai_errors import AIMultipleWriteActionsError
+from app.services.ai_errors import AINotConfiguredError, AIMultipleWriteActionsError
 
 # ---------------------------------------------------------------------------
 # Fake DeepSeekClient
@@ -181,6 +181,46 @@ READ_TOOLS = frozenset({"count_students", "list_students", "search_students",
 # ===================================================================
 # 1. Ordinary text Q&A
 # ===================================================================
+
+
+def test_unconfigured_chat_short_circuits_before_creating_clients() -> None:
+    """An unconfigured service must not create DeepSeek or MCP dependencies."""
+    from app.services.ai_chat_service import AIChatService
+
+    messages = [{"role": "user", "content": "unchanged"}]
+    original_messages = copy.deepcopy(messages)
+    deepseek_factory_calls = 0
+    adapter_factory_calls = 0
+    deepseek = FakeDeepSeekClient([TEXT_RESPONSE])
+    adapter = FakeMCPToolAdapter()
+
+    def deepseek_factory() -> FakeDeepSeekClient:
+        nonlocal deepseek_factory_calls
+        deepseek_factory_calls += 1
+        return deepseek
+
+    def adapter_factory() -> FakeMCPToolAdapter:
+        nonlocal adapter_factory_calls
+        adapter_factory_calls += 1
+        return adapter
+
+    service = AIChatService(
+        deepseek_client_factory=deepseek_factory,
+        mcp_adapter_factory=adapter_factory,
+        ai_configured=False,
+    )
+
+    with pytest.raises(AINotConfiguredError) as error:
+        _run_async(service.chat(messages))
+
+    assert error.value.code == "ai_not_configured"
+    assert deepseek_factory_calls == 0
+    assert deepseek.call_count == 0
+    assert adapter_factory_calls == 0
+    assert adapter.enter_count == 0
+    assert adapter.discover_count == 0
+    assert adapter.invoke_count == 0
+    assert messages == original_messages
 
 
 def test_text_reply_returns_success() -> None:

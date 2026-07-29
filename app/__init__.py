@@ -54,6 +54,7 @@ def create_ai_chat_service(app: Flask):
         ),
         action_confirmation=confirmation,
         max_tool_rounds=app.config["AI_MAX_TOOL_ROUNDS"],
+        ai_configured=app.config["AI_CONFIGURED"],
     )
 
 
