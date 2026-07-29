@@ -465,6 +465,7 @@ if (page) {
     elements.modalBackdrop.classList.add("is-open");
     elements.modalBackdrop.hidden = false;
     document.body.classList.add("modal-open");
+    document.dispatchEvent(new CustomEvent("student-modal-opened"));
     focusFirstField();
   }
 
@@ -485,6 +486,7 @@ if (page) {
     elements.modalBackdrop.classList.add("is-open");
     elements.modalBackdrop.hidden = false;
     document.body.classList.add("modal-open");
+    document.dispatchEvent(new CustomEvent("student-modal-opened"));
     focusFirstField();
   }
 

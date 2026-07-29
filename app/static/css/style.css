@@ -491,7 +491,7 @@ button.disabled,
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 90;
   place-items: center;
   padding: 24px;
   background: rgba(8, 17, 34, 0.44);

@@ -11,23 +11,27 @@
   </svg>
 </button>
 
-<section
-  id="ai-chat-panel"
-  class="ai-chat-panel"
-  role="dialog"
-  aria-label="AI 助手"
-  aria-hidden="true"
-  hidden
->
+<section id="ai-chat-panel" class="ai-chat-panel" role="dialog" aria-label="AI 助手" aria-hidden="true" hidden>
   <header class="ai-chat-header">
     <h2 class="ai-chat-title">AI 助手</h2>
-    <button type="button" class="ai-chat-close" aria-label="关闭 AI 助手" title="关闭 AI 助手">×</button>
+    <div class="ai-chat-header-actions">
+      <button type="button" class="ai-chat-clear" aria-label="清空会话" title="清空会话">清空</button>
+      <button type="button" class="ai-chat-close" aria-label="关闭 AI 助手" title="关闭 AI 助手">×</button>
+    </div>
   </header>
   <div class="ai-chat-messages" aria-live="polite"></div>
-  <div class="ai-chat-loading" hidden>正在思考…</div>
+  <div class="ai-chat-confirmation" aria-label="待确认操作" hidden>
+    <p class="ai-chat-confirmation-summary"></p>
+    <pre class="ai-chat-confirmation-arguments"></pre>
+    <div class="ai-chat-confirmation-actions">
+      <button type="button" class="ai-chat-confirm" aria-label="确认操作" title="确认操作">确认</button>
+      <button type="button" class="ai-chat-cancel" aria-label="取消操作" title="取消操作">取消</button>
+    </div>
+  </div>
+  <div class="ai-chat-loading" role="status" aria-live="polite" hidden>正在思考…</div>
   <div class="ai-chat-error" role="alert" hidden></div>
   <div class="ai-chat-composer">
     <textarea class="ai-chat-input" rows="3" aria-label="输入消息" placeholder="输入消息，按 Enter 发送"></textarea>
-    <button type="button" class="ai-chat-send">发送</button>
+    <button type="button" class="ai-chat-send" aria-label="发送消息" title="发送消息">发送</button>
   </div>
 </section>

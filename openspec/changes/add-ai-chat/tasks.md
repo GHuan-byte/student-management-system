@@ -112,8 +112,8 @@
     - [x] 2.5.10c VERIFY: business, technical, discovery, exit, and concurrent failed-write paths execute at most once
 - [x] 2.5.11 RED: Test SECRET_KEY missing — write confirmation fail-closed (ai_confirmation_not_configured)
 - [x] 2.5.12 RED: Test SECRET_KEY at development default — write confirmation fail-closed
-- [ ] 2.5.13 RED: Test token not stored in sessionStorage
-- [ ] 2.5.14 GREEN: Implement all confirmation logic with thread safety (blocked by 2.5.13)
+- [x] 2.5.13 RED: Test token not stored in sessionStorage
+- [x] 2.5.14 GREEN: Implement all confirmation logic with thread safety (blocked by 2.5.13)
 - [x] 2.5.15 REFACTOR: Clean up backend AIActionConfirmation module
 
 > **2.5 Status:** Backend token signing, verification, payload validation,
@@ -178,10 +178,10 @@ confirmation-token orchestration.
     - [x] VERIFY: replay does not re-execute
     - [x] VERIFY: MCP failure remains consumed
     - [x] REFACTOR: isolate confirmed-write orchestration
-- [ ] 2.6.14 Cancelled write does not execute
+- [x] 2.6.14 Cancelled write does not execute
     - [x] 2.6.14a VERIFY: Pending actions are never executed automatically
     - [x] 2.6.14b VERIFY: No confirmation call means no MCP execution
-    - [ ] 2.6.14c Frontend cancellation discards the pending action and displays 操作已取消 (section 2.8)
+    - [x] 2.6.14c Frontend cancellation discards the pending action and displays 操作已取消 (section 2.8)
 
   > **Cancellation semantics:**
   > - Cancel does NOT consume or revoke the token.
@@ -246,14 +246,14 @@ confirmation-token orchestration.
 - [x] 2.8.10 Implement send button with disabled state during request (prevent duplicate send)
 - [x] 2.8.11 Implement loading indicator during API call
 - [x] 2.8.12 Implement error display in message area (panel stays open on error)
-- [ ] 2.8.13 Implement confirmation card for write operations (confirm/cancel buttons)
-- [ ] 2.8.14 Implement sessionStorage save/restore — only user/assistant messages
-- [ ] 2.8.15 Implement clear-session button — removes sessionStorage key
-- [ ] 2.8.16 Implement Escape key to close panel
-- [ ] 2.8.17 Implement keyboard focus and aria-label/title for accessibility
-- [ ] 2.8.18 Implement auto-close: student modal opens → Chat Panel closes (history preserved, panel does not reopen)
-- [ ] 2.8.19 Ensure icon z-index is below student modal backdrop (z-index: 80)
-- [ ] 2.8.20 Ensure exactly one icon and one panel per page — no duplicate event listeners
+- [x] 2.8.13 Implement confirmation card for write operations (confirm/cancel buttons)
+- [x] 2.8.14 Implement sessionStorage save/restore — only user/assistant messages
+- [x] 2.8.15 Implement clear-session button — removes sessionStorage key
+- [x] 2.8.16 Implement Escape key to close panel
+- [x] 2.8.17 Implement keyboard focus and aria-label/title for accessibility
+- [x] 2.8.18 Implement auto-close: student modal opens → Chat Panel closes (history preserved, panel does not reopen)
+- [x] 2.8.19 Ensure icon z-index is below student modal backdrop (z-index: 80)
+- [x] 2.8.20 Ensure exactly one icon and one panel per page — no duplicate event listeners
 
 ### 2.9 Page Integration Tests (TDD: test_ai_chat_pages.py)
 
