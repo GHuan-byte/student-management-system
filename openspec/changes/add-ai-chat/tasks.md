@@ -63,7 +63,7 @@
 - [x] 2.3.18 RED: Test Model from env, no hardcoded default
 - [x] 2.3.19 RED: Test API Key in Bearer header, not in logs/exception text/return values
 - [x] 2.3.20 RED: Test MockTransport used in default tests, no real network
-- [x] 2.3.21 GREEN: Implement all error handling, thinking mode, reasoning_effort validation, and dependency injection (thinking implemented; error handling complete; reasoning_effort validated; pending 2.3.12 browser leak check)
+- [x] 2.3.21 GREEN: Implement all error handling, thinking mode, reasoning_effort validation, and dependency injection
 - [x] 2.3.21a RED: reasoning_effort high/max valid, medium/low/missing → invalid, client refuses request
 - [x] 2.3.21b GREEN: _validate_reasoning_effort() in client + _compute_ai_configured() in config
 - [x] 2.3.22 REFACTOR: Clean up DeepSeekClient under test coverage
@@ -118,8 +118,8 @@
 
 > **2.5 Status:** Backend token signing, verification, payload validation,
 > atomic consumption and in-process replay protection are complete.
-> MCP write-failure integration (2.5.10) is complete; browser storage
-> verification (2.5.13) remains pending.
+> MCP write-failure integration (2.5.10) and browser storage verification
+> (2.5.13) are complete.
 
 ### 2.6 AI Chat Service (TDD: test_ai_chat_service.py)
 
@@ -150,8 +150,8 @@
 - [x] 2.6.6a VERIFY: Multiple write tool calls fail closed before execution
 <br>Current behavior rejects the entire write-tool batch before execution.
 No MCP tool is executed and no partial action occurs.
-The final ai_multiple_write_actions response remains pending
-confirmation-token orchestration.
+The final ai_multiple_write_actions response is returned without creating a
+pending confirmation action.
 - [x] 2.6.7 RED: Test unknown tool — not executed, structured error returned
 - [x] 2.6.7a RED/GREEN: unknown tool returns safe Tool Result, no adapter call
 - [x] 2.6.7b RED/GREEN: read + unknown + read — reads execute, unknown skipped, order preserved
@@ -166,10 +166,8 @@ confirmation-token orchestration.
 - [x] 2.6.11b VERIFY: mcp_tool_error → safe Tool Result, service continues
 - [x] 2.6.11c VERIFY: Error in round 1 does not block round 2
 - [x] 2.6.12 RED: Test write tool returns pending action instead of executing
-- [x] 2.6.6 Multiple write tools return ai_multiple_write_actions
 - [x] 2.6.8 At most one Pending Action per response
 - [x] 2.6.12a–: Single write → pending action with token
-- [x] 2.6.6a–: Multiple writes → AIMultipleWriteActionsError
 - [x] 2.6.8a–: Mixed batch → at most one pending action
 - [x] 2.6.12/6/8 REFACTOR: Write batch pre-scan → 0/1/many dispatch
 - [x] 2.6.13 RED: Test confirmed write executes exactly once
@@ -275,13 +273,13 @@ confirmation-token orchestration.
 
 ## 3. OpenSpec Conformance Gate
 
-- [ ] 3.1 Run openspec verify --change "add-ai-chat" to check completeness
-- [ ] 3.2 Verify implementation matches proposal scope (no scope creep)
-- [ ] 3.3 Verify implementation matches spec requirements (all scenarios covered)
-- [ ] 3.4 Verify implementation matches design decisions (architecture intact)
-- [ ] 3.5 Verify implementation matches task list (all tasks addressed)
-- [ ] 3.6 Verify tests cover all spec scenarios (test matrix complete)
-- [ ] 3.7 If any code or test changed after conformance check, re-run relevant tests and re-check
+- [x] 3.1 Validate OpenSpec change with `openspec validate add-ai-chat` (current CLI equivalent; valid)
+- [x] 3.2 Verify implementation matches proposal scope (no scope creep)
+- [x] 3.3 Verify implementation matches spec requirements (all automatable scenarios covered; browser interaction remains [USER])
+- [x] 3.4 Verify implementation matches design decisions (architecture intact)
+- [x] 3.5 Verify implementation matches task list (all implementation tasks addressed; duplicate task entries removed)
+- [x] 3.6 Verify tests cover all automatable spec scenarios (browser interaction remains [USER])
+- [x] 3.7 Tasks artifact changed during conformance; re-ran validate, full pytest, compileall, and diff check
 
 ## 4. Superpowers Evidence Gate
 
