@@ -53,8 +53,8 @@
 - [x] 2.3.10 RED: Test malformed response (missing choices/message) maps to ai_invalid_response
 - [x] 2.3.11 RED: Test other httpx errors map to ai_upstream_error
 - [x] 2.3.12a RED: Error message does not contain API Key, Authorization header, or user message
-- [ ] 2.3.12 RED: Test httpx raw exceptions not exposed to browser (requires Route layer)
-- [ ] 2.3.13 RED: Test automatic retry is NOT implemented (Not implemented by design)
+- [x] 2.3.12 RED: Test httpx raw exceptions not exposed to browser (requires Route layer)
+- [x] 2.3.13 VERIFY: DeepSeekClient performs no automatic retries
 - [x] 2.3.14 RED: Test thinking enabled — sends reasoning_effort from DEEPSEEK_REASONING_EFFORT
 - [x] 2.3.15 RED: Test thinking disabled — no reasoning parameters sent
 - [x] 2.3.16 RED: Test reasoning_content extracted for internal use, not in response
@@ -201,8 +201,8 @@ confirmation-token orchestration.
 
 - [x] 2.7.1 RED: Test POST /api/chat with valid messages returns reply
 - [x] 2.7.2 GREEN: Implement chat.py blueprint with POST /api/chat
-- [ ] 2.7.3 RED: Test POST /api/chat/actions/confirm with valid token
-- [ ] 2.7.4 GREEN: Implement POST /api/chat/actions/confirm
+- [x] 2.7.3 RED: Test POST /api/chat/actions/confirm with valid token
+- [x] 2.7.4 GREEN: Implement POST /api/chat/actions/confirm
 - [x] 2.7.5 RED: Test non-JSON body returns validation_error
 - [x] 2.7.6 RED: Test empty messages returns validation_error
 - [x] 2.7.7 RED: Test non-array messages returns validation_error
@@ -212,16 +212,16 @@ confirmation-token orchestration.
 - [x] 2.7.11 RED: Test all messages validated before truncation — illegal messages in tail not skipped
 - [x] 2.7.12 RED: Test history exceeds max limit is truncated (last user message retained)
 - [x] 2.7.13 RED: Test message exceeds max length returns validation_error
-- [ ] 2.7.14 RED: Test missing config returns ai_not_configured
-- [ ] 2.7.15 RED: Test upstream auth error returns ai_auth_error
-- [ ] 2.7.16 RED: Test upstream timeout returns ai_timeout
-- [ ] 2.7.17 RED: Test upstream rate limit returns ai_rate_limited
-- [ ] 2.7.18 RED: Test internal error does not leak traceback or API key
-- [ ] 2.7.19 RED: Test API URL does not contain model name
-- [ ] 2.7.20 RED: Test confirm endpoint returns deterministic Chinese reply
-- [ ] 2.7.21 RED: Test confirm returns safe action_result without structured_content/parsed_text
-- [ ] 2.7.22 RED: Test confirm does not call DeepSeek again
-- [ ] 2.7.23 RED: Test confirm does not accept browser-submitted arguments
+- [x] 2.7.14 RED: Test missing config returns ai_not_configured
+- [x] 2.7.15 RED: Test upstream auth error returns ai_auth_error
+- [x] 2.7.16 RED: Test upstream timeout returns ai_timeout
+- [x] 2.7.17 RED: Test upstream rate limit returns ai_rate_limited
+- [x] 2.7.18 RED: Test internal error does not leak traceback or API key
+- [x] 2.7.19 RED: Test API URL does not contain model name
+- [x] 2.7.20 RED: Test confirm endpoint returns deterministic Chinese reply
+- [x] 2.7.21 RED: Test confirm returns safe action_result without structured_content/parsed_text
+- [x] 2.7.22 RED: Test confirm does not call DeepSeek again
+- [x] 2.7.23 RED: Test confirm does not accept browser-submitted arguments
 - [ ] 2.7.24 GREEN: Implement all route handling
 - [ ] 2.7.25 Register chat blueprint in app/__init__.py
 - [ ] 2.7.26 REFACTOR: Clean up chat routes

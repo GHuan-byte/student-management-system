@@ -1472,3 +1472,28 @@ def test_does_not_access_real_network(monkeypatch: pytest.MonkeyPatch) -> None:
     _run_async(run())
 
     assert call_count == 1
+
+
+def test_client_does_not_automatically_retry_failed_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transport failure makes exactly one request and raises a safe error."""
+    call_count = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        raise httpx.ConnectError("connection failed", request=request)
+
+    transport = httpx.MockTransport(handler)
+    config = _make_config(monkeypatch)
+    from app.services.ai_errors import AIUpstreamError
+    from app.services.deepseek_client import DeepSeekClient
+
+    async def run() -> None:
+        async with DeepSeekClient(config=config, transport=transport) as client:
+            await client.create_chat_completion(messages=TEST_MESSAGES)
+
+    with pytest.raises(AIUpstreamError):
+        _run_async(run())
+    assert call_count == 1

@@ -14,6 +14,30 @@ from app.utils.response import api_error, api_success
 chat_bp = Blueprint("chat", __name__)
 
 _ALLOWED_BROWSER_ROLES = frozenset({"user", "assistant"})
+_FORBIDDEN_ACTION_RESULT_KEYS = frozenset({
+    "structured_content", "parsed_text", "raw_content", "content_blocks",
+    "traceback", "exception", "exception_repr", "reasoning_content",
+    "command", "argv", "cwd", "database_path", "connection", "connections",
+    "session", "mcp_session", "server_url", "transport", "stdout", "stderr",
+    "environment", "api_key", "authorization", "authorization_header",
+})
+
+_AI_ERROR_STATUS_CODES = {
+    "ai_not_configured": 503,
+    "ai_auth_error": 502,
+    "ai_timeout": 504,
+    "ai_rate_limited": 429,
+    "ai_upstream_error": 502,
+    "ai_invalid_response": 502,
+    "ai_tool_round_limit": 400,
+    "ai_multiple_write_actions": 400,
+    "ai_confirmation_not_configured": 503,
+    "ai_confirmation_invalid": 400,
+    "ai_confirmation_invalid_payload": 400,
+    "ai_confirmation_expired": 400,
+    "ai_confirmation_replayed": 409,
+    "ai_confirmation_execution_failed": 502,
+}
 
 
 def _validation_error(message: str):
@@ -70,6 +94,48 @@ def _public_chat_data(result: dict[str, object]) -> dict[str, object]:
     return data
 
 
+def _public_confirm_data(result: dict[str, object]) -> dict[str, object]:
+    """Project confirmation output without token or invocation internals."""
+    return {
+        "reply": result.get("reply", ""),
+        "requires_confirmation": False,
+        "pending_action": None,
+        "action_result": _sanitize_action_result(result.get("action_result")),
+    }
+
+
+def _sanitize_action_result(value: Any) -> Any:
+    """Keep business data while removing nested MCP diagnostics."""
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_action_result(item)
+            for key, item in value.items()
+            if not isinstance(key, str) or key.lower() not in _FORBIDDEN_ACTION_RESULT_KEYS
+        }
+    if isinstance(value, list):
+        return [_sanitize_action_result(item) for item in value]
+    return value
+
+
+def _map_ai_error(error: AIClientError):
+    """Map stable service errors to safe, unified HTTP JSON responses."""
+    return api_error(
+        message=error.safe_message,
+        error={"code": error.code, "details": None},
+        status_code=_AI_ERROR_STATUS_CODES.get(error.code, 500),
+    )
+
+
+def _confirmation_token(payload: Any) -> str:
+    """Extract the sole browser-controlled field accepted by confirm."""
+    if not isinstance(payload, dict):
+        raise ValueError("请求必须是 JSON 对象")
+    token = payload.get("confirmation_token")
+    if not isinstance(token, str) or not token.strip():
+        raise ValueError("confirmation_token 无效")
+    return token
+
+
 @chat_bp.post("/api/chat")
 def chat():
     """Validate browser messages and delegate one request to AIChatService."""
@@ -85,11 +151,7 @@ def chat():
     try:
         result = asyncio.run(service_factory().chat(messages))
     except AIClientError as error:
-        return api_error(
-            message=error.safe_message,
-            error={"code": error.code, "details": None},
-            status_code=500,
-        )
+        return _map_ai_error(error)
     except Exception:
         return api_error(
             message="Internal server error",
@@ -97,3 +159,27 @@ def chat():
             status_code=500,
         )
     return api_success(data=_public_chat_data(result))
+
+
+@chat_bp.post("/api/chat/actions/confirm")
+def confirm_chat_action():
+    """Confirm one server-signed pending write without invoking chat again."""
+    if not request.is_json:
+        return _validation_error("请求必须是 JSON")
+    try:
+        token = _confirmation_token(request.get_json(silent=False))
+    except (BadRequest, ValueError, TypeError):
+        return _validation_error("确认请求无效")
+
+    service_factory = current_app.extensions["ai_chat_service_factory"]
+    try:
+        result = asyncio.run(service_factory().confirm_action(token))
+    except AIClientError as error:
+        return _map_ai_error(error)
+    except Exception:
+        return api_error(
+            message="Internal server error",
+            error={"code": "internal_error", "details": None},
+            status_code=500,
+        )
+    return api_success(data=_public_confirm_data(result))

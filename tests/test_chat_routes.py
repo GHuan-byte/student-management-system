@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+import httpx
 import pytest
 
 from app import create_app
@@ -23,12 +24,27 @@ class FakeAIChatService:
         }
         self.error = error
         self.calls: list[list[dict[str, object]]] = []
+        self.confirm_calls: list[str] = []
+        self.confirm_result: dict[str, object] = {
+            "success": True,
+            "reply": "新增学生成功。",
+            "requires_confirmation": False,
+            "pending_action": None,
+            "action_result": {"success": True, "data": {"id": 1}},
+        }
+        self.confirm_error: Exception | None = None
 
     async def chat(self, messages: list[dict[str, object]]) -> dict[str, object]:
         self.calls.append(copy.deepcopy(messages))
         if self.error is not None:
             raise self.error
         return dict(self.result)
+
+    async def confirm_action(self, confirmation_token: str) -> dict[str, object]:
+        self.confirm_calls.append(confirmation_token)
+        if self.confirm_error is not None:
+            raise self.confirm_error
+        return dict(self.confirm_result)
 
 
 def _client(service: FakeAIChatService, **overrides: object):
@@ -179,7 +195,7 @@ def test_post_chat_maps_ai_client_error_to_safe_json() -> None:
         "/api/chat", json={"messages": [{"role": "user", "content": "查询"}]},
     )
     payload = response.get_json()
-    assert response.status_code == 500
+    assert response.status_code == 503
     assert payload["error"]["code"] == "ai_not_configured"
     assert payload["message"] == "AI 服务配置不完整"
 
@@ -193,3 +209,146 @@ def test_post_chat_maps_unknown_error_without_leaking_request() -> None:
     assert response.status_code == 500
     assert payload["error"]["code"] == "internal_error"
     assert all(value not in str(payload) for value in ("traceback", "secret", "张三"))
+
+
+def test_confirm_returns_safe_envelope_and_receives_only_token() -> None:
+    service = FakeAIChatService()
+    response = _client(service).post("/api/chat/actions/confirm", json={
+        "confirmation_token": "signed-token",
+        "tool_name": "delete_student",
+        "arguments": {"student_id": 999},
+        "action_id": "browser-value",
+        "summary": "browser-value",
+    })
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert payload["data"] == {
+        "reply": "新增学生成功。",
+        "requires_confirmation": False,
+        "pending_action": None,
+        "action_result": {"success": True, "data": {"id": 1}},
+    }
+    assert service.confirm_calls == ["signed-token"]
+    assert service.calls == []
+    assert all(key not in str(payload) for key in (
+        "confirmation_token", "tool_name", "arguments", "action_id", "reasoning_content",
+    ))
+
+
+@pytest.mark.parametrize("body, content_type", [
+    ("not-json", "text/plain"), ("{", "application/json"), ("[]", "application/json"),
+])
+def test_confirm_rejects_non_object_json(body: str, content_type: str) -> None:
+    service = FakeAIChatService()
+    response = _client(service).post(
+        "/api/chat/actions/confirm", data=body, content_type=content_type,
+    )
+    _assert_validation(response)
+    assert service.confirm_calls == []
+
+
+@pytest.mark.parametrize("payload", [
+    {}, {"confirmation_token": None}, {"confirmation_token": 1},
+    {"confirmation_token": ""}, {"confirmation_token": "   "},
+])
+def test_confirm_rejects_invalid_token_input(payload: dict[str, object]) -> None:
+    service = FakeAIChatService()
+    response = _client(service).post("/api/chat/actions/confirm", json=payload)
+    _assert_validation(response)
+    assert service.confirm_calls == []
+
+
+@pytest.mark.parametrize("error, status", [
+    ("AINotConfiguredError", 503), ("AIAuthError", 502), ("AITimeoutError", 504),
+    ("AIRateLimitedError", 429), ("AIUpstreamError", 502),
+    ("AIInvalidResponseError", 502), ("AIToolRoundLimitError", 400),
+    ("AIMultipleWriteActionsError", 400),
+])
+def test_chat_maps_ai_errors_to_stable_status(error: str, status: int) -> None:
+    import app.services.ai_errors as errors
+    service = FakeAIChatService(error=getattr(errors, error)())
+    response = _client(service).post(
+        "/api/chat", json={"messages": [{"role": "user", "content": "query"}]},
+    )
+    assert response.status_code == status
+    assert response.get_json()["error"]["code"] == getattr(errors, error).code
+
+
+@pytest.mark.parametrize("error, status", [
+    ("AIConfirmationNotConfiguredError", 503), ("AIConfirmationInvalidError", 400),
+    ("AIConfirmationExpiredError", 400), ("AIConfirmationReplayError", 409),
+    ("AIConfirmationExecutionError", 502),
+])
+def test_confirm_maps_ai_errors_to_stable_status(error: str, status: int) -> None:
+    import app.services.ai_errors as errors
+    service = FakeAIChatService()
+    service.confirm_error = getattr(errors, error)()
+    response = _client(service).post(
+        "/api/chat/actions/confirm", json={"confirmation_token": "signed-token"},
+    )
+    assert response.status_code == status
+    assert response.get_json()["error"]["code"] == getattr(errors, error).code
+
+
+def test_confirm_unknown_error_is_safe() -> None:
+    service = FakeAIChatService()
+    service.confirm_error = RuntimeError("traceback Bearer sk-secret model api-base signed-token")
+    response = _client(service).post(
+        "/api/chat/actions/confirm", json={"confirmation_token": "signed-token"},
+    )
+    payload = response.get_json()
+    assert response.status_code == 500
+    assert payload["error"]["code"] == "internal_error"
+    assert all(value not in str(payload) for value in (
+        "traceback", "sk-secret", "model", "api-base", "signed-token",
+    ))
+
+
+def test_confirm_response_strips_raw_mcp_diagnostics() -> None:
+    service = FakeAIChatService()
+    service.confirm_result["action_result"] = {
+        "success": True,
+        "data": {
+            "student": {"id": 1},
+            "structured_content": "private",
+            "parsed_text": "private",
+            "traceback": "private",
+            "reasoning_content": "private",
+        },
+    }
+    response = _client(service).post(
+        "/api/chat/actions/confirm", json={"confirmation_token": "signed-token"},
+    )
+    public_output = str(response.get_json())
+    assert response.get_json()["data"]["action_result"] == {
+        "success": True, "data": {"student": {"id": 1}},
+    }
+    assert all(key not in public_output for key in (
+        "structured_content", "parsed_text", "traceback", "reasoning_content",
+    ))
+
+
+def test_chat_hides_raw_httpx_exception_details() -> None:
+    service = FakeAIChatService(error=httpx.ConnectError(
+        "Bearer sk-secret https://api.example.invalid/model student message",
+    ))
+    response = _client(service).post(
+        "/api/chat", json={"messages": [{"role": "user", "content": "student message"}]},
+    )
+    payload = response.get_json()
+    assert response.status_code == 500
+    assert payload["error"]["code"] == "internal_error"
+    assert all(value not in str(payload) for value in (
+        "sk-secret", "api.example.invalid", "model", "student message",
+    ))
+
+
+def test_chat_route_paths_are_model_agnostic() -> None:
+    service = FakeAIChatService()
+    app = _client(service).application
+    paths = {rule.rule for rule in app.url_map.iter_rules()}
+    assert "/api/chat" in paths
+    assert "/api/chat/actions/confirm" in paths
+    assert all("deepseek" not in path.lower() and "gpt" not in path.lower() for path in paths)
