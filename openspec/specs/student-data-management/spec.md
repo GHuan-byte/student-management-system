@@ -1,3 +1,9 @@
+## Purpose
+
+Define the SQLite-backed student data-management contract.
+
+## Requirements
+
 ### Requirement: SQLite connection and initialization
 The system SHALL provide centralized SQLite connection management and explicit
 schema initialization for the student CRUD capability.

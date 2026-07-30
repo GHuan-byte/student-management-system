@@ -1,3 +1,9 @@
+## Purpose
+
+Define the Flask-rendered Dashboard and student-management browser interface.
+
+## Requirements
+
 ### Requirement: Student management page
 The system SHALL provide browser-accessible student-management screens rendered
 with Flask templates, including a shared layout and an enhanced `/students`
@@ -330,3 +336,25 @@ while applying layout and styling changes.
   selection, batch delete, `year_level`, `score`, and leading-zero student
   numbers SHALL continue to use the approved API and browser interaction
   contract
+
+### Requirement: AI Chat preserves student UI contracts
+The system SHALL add AI Chat through the shared layout without changing the
+student page's server-rendering or modal-state contracts.
+
+#### Scenario: Student page remains server-rendered with AI Chat
+- **WHEN** a browser requests `GET /students`
+- **THEN** the system SHALL return the Flask-rendered student-management page
+- **AND** the AI Chat panel SHALL be included through the shared `base.html`
+  layout without changing the student page template structure
+
+#### Scenario: Dashboard shared layout includes AI Chat
+- **WHEN** a browser requests `GET /`
+- **THEN** the Dashboard SHALL use the shared administration layout
+- **AND** the AI Chat icon SHALL be rendered as part of that shared layout
+
+#### Scenario: AI Chat does not alter student modal state
+- **WHEN** the student modal is closed
+- **THEN** it SHALL remain hidden regardless of AI Chat panel state
+- **WHEN** the student modal opens
+- **THEN** the AI Chat panel SHALL close automatically
+- **AND** the modal SHALL remain open regardless of any prior Chat Panel state

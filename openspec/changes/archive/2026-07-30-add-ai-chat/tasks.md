@@ -392,7 +392,7 @@ pending confirmation action.
 
 ## 6. Archive Gate
 
-- [ ] 6.1 Sync canonical specs: copy delta specs to openspec/specs/ai-chat/spec.md
-- [ ] 6.2 Run openspec archive --change "add-ai-chat"
-- [ ] 6.3 Verify archive status and artifact preservation
-- [ ] 6.4 Commit archive result with message: "Archive add-ai-chat change"
+- [x] 6.1 Sync canonical specs: copy delta specs to openspec/specs/ai-chat/spec.md
+- [x] 6.2 Run openspec archive --change "add-ai-chat"
+- [x] 6.3 Verify archive status and artifact preservation
+- [x] 6.4 Commit archive result with message: "Archive add-ai-chat change"

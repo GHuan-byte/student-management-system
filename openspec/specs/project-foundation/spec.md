@@ -1,3 +1,9 @@
+## Purpose
+
+Define the foundational Flask application structure and configuration contract.
+
+## Requirements
+
 ### Requirement: Application factory
 The system SHALL provide a `create_app(config_name=None, config_overrides=None, load_env=True)` application factory that creates and returns a configured Flask application instance.
 
