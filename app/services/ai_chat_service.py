@@ -18,6 +18,7 @@ Each ``chat()`` call:
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Any, Callable
 
@@ -408,8 +409,16 @@ class AIChatService:
         """Extract a safe text result from a DeepSeek response."""
         return {
             "success": True,
-            "reply": response.get("content") or "",
+            "reply": AIChatService._normalize_assistant_reply(
+                response.get("content") or "",
+            ),
         }
+
+    @staticmethod
+    def _normalize_assistant_reply(content: str) -> str:
+        """Remove paired Markdown emphasis markers from visible reply text."""
+        content = re.sub(r"\*\*([^\n*]+?)\*\*", r"\1", content)
+        return re.sub(r"__([^\n_]+?)__", r"\1", content)
 
     @staticmethod
     def _build_assistant_message(response: dict[str, Any]) -> dict[str, object]:

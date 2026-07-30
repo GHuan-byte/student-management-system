@@ -236,6 +236,12 @@ pending confirmation action.
 - [x] GREEN: Short-circuit `ai_not_configured` before DeepSeek or MCP dependency creation
 - [x] VERIFY: `POST /api/chat` returns HTTP 503 without DeepSeek, MCP, or database access
 
+### 2.7b Plain-Text DeepSeek Reply Normalization Fix
+
+- [x] RED: DeepSeek Markdown emphasis markers were displayed literally in the plain-text Chat UI
+- [x] GREEN: Normalize DeepSeek final replies before returning them to users
+- [x] VERIFY: Remove `**bold**` and `__emphasis__` markers while preserving content, newlines, tables, and leading zeros
+
 ### 2.8 AI Chat Frontend
 
 - [x] 2.8.1 Create app/templates/_ai_chat.html with floating icon and panel HTML

@@ -260,6 +260,165 @@ def test_text_reply_returns_correct_content() -> None:
     assert result["reply"] == "当前共有 42 名学生。"
 
 
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("未找到学号为 **99999** 的学生。", "未找到学号为 99999 的学生。"),
+        ("学号 **00001** 的学生存在。", "学号 00001 的学生存在。"),
+        ("学号 **00001**，姓名 **赵子涵**。", "学号 00001，姓名 赵子涵。"),
+        ("未找到学号为 __99999__ 的学生。", "未找到学号为 99999 的学生。"),
+        ("普通回复不变。", "普通回复不变。"),
+        ("第一行 **99999**\n第二行 __赵子涵__", "第一行 99999\n第二行 赵子涵"),
+        ("| 学号 | 姓名 |\n| **00001** | 赵子涵 |", "| 学号 | 姓名 |\n| 00001 | 赵子涵 |"),
+        ("2 * 3 = 6，文件名 a_b.txt 不变。", "2 * 3 = 6，文件名 a_b.txt 不变。"),
+    ],
+    ids=(
+        "strong-number",
+        "leading-zero",
+        "multiple-strong",
+        "double-underscore",
+        "plain-text",
+        "newlines",
+        "table-layout",
+        "single-markers",
+    ),
+)
+def test_text_reply_normalizes_only_double_emphasis(
+    content: str,
+    expected: str,
+) -> None:
+    """Final text replies remove only paired Markdown emphasis markers."""
+    from app.services.ai_chat_service import AIChatService
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: FakeDeepSeekClient([{"content": content}]),
+        mcp_adapter_factory=FakeMCPToolAdapter,
+    )
+
+    result = _run_async(service.chat([{"role": "user", "content": "查询学生"}]))
+
+    assert result["reply"] == expected
+
+
+def test_tool_loop_final_reply_normalizes_double_emphasis() -> None:
+    """The common final reply path normalizes text after a successful tool call."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([
+        TOOL_CALL_RESPONSE,
+        {"content": "学生信息：学号 **00001**，姓名 **赵子涵**。"},
+    ])
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=FakeMCPToolAdapter,
+    )
+
+    result = _run_async(service.chat([{"role": "user", "content": "查询学生"}]))
+
+    assert result["reply"] == "学生信息：学号 00001，姓名 赵子涵。"
+    assert deepseek.call_count == 2
+
+
+def test_unknown_tool_final_reply_normalizes_double_emphasis() -> None:
+    """An unknown-tool Tool Result still ends with a normalized final reply."""
+    from app.services.ai_chat_service import AIChatService
+
+    deepseek = FakeDeepSeekClient([
+        UNKNOWN_TOOL_RESPONSE,
+        {"content": "未找到 **99999** 对应的工具结果。"},
+    ])
+    adapter = FakeMCPToolAdapter()
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    result = _run_async(service.chat([{"role": "user", "content": "查询学生"}]))
+
+    assert result["reply"] == "未找到 99999 对应的工具结果。"
+    assert adapter.invoke_count == 0
+
+
+def test_mcp_business_error_final_reply_normalizes_double_emphasis() -> None:
+    """A business-error Tool Result still returns normalized final text."""
+    from app.services.ai_chat_service import AIChatService
+
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "not_found", "message": "Student not found"},
+    })
+    deepseek = FakeDeepSeekClient([
+        ERROR_RESPONSE,
+        {"content": "未找到学号为 **99999** 的学生。"},
+    ])
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+    )
+
+    result = _run_async(service.chat([{"role": "user", "content": "查询学生"}]))
+
+    assert result["reply"] == "未找到学号为 99999 的学生。"
+    assert adapter.invoke_count == 1
+
+
+def test_final_reply_excludes_reasoning_content_while_normalizing_text() -> None:
+    """Reasoning remains internal even when final visible text is normalized."""
+    from app.services.ai_chat_service import AIChatService
+
+    service = AIChatService(
+        deepseek_client_factory=lambda: FakeDeepSeekClient([
+            {"content": "结果是 **99999**。", "reasoning_content": "private reasoning"},
+        ]),
+        mcp_adapter_factory=FakeMCPToolAdapter,
+    )
+
+    result = _run_async(service.chat([{"role": "user", "content": "查询学生"}]))
+
+    assert result["reply"] == "结果是 99999。"
+    assert "reasoning_content" not in result
+
+
+def test_normalization_does_not_change_pending_or_confirmed_action_contract() -> None:
+    """Only final DeepSeek reply text is normalized, never action payloads."""
+    from app.services.ai_chat_service import AIChatService
+
+    write_response = {
+        "content": None,
+        "tool_calls": [{
+            "id": "write-with-markers",
+            "type": "function",
+            "function": {
+                "name": "add_student",
+                "arguments": json.dumps(
+                    {"student_number": "**00001**", "name": "__赵子涵__"},
+                    ensure_ascii=False,
+                ),
+            },
+        }],
+    }
+    confirmation = FakeAIActionConfirmation()
+    service = AIChatService(
+        deepseek_client_factory=lambda: FakeDeepSeekClient([write_response]),
+        mcp_adapter_factory=FakeMCPToolAdapter,
+        action_confirmation=confirmation,
+        action_id_factory=lambda: ACTION_ID,
+    )
+
+    pending = _run_async(service.chat([{"role": "user", "content": "新增学生"}]))
+    confirmed = service._build_confirmed_action_result({"success": True}, "add_student")
+
+    assert confirmation.received_payloads[0]["arguments"] == {
+        "student_number": "**00001**",
+        "name": "__赵子涵__",
+    }
+    assert pending["pending_action"]["safe_arguments"] == (
+        '{"student_number": "**00001**", "name": "__赵子涵__"}'
+    )
+    assert confirmed["reply"] == "新增学生成功。"
+
+
 def test_text_deepseek_called_once() -> None:
     """DeepSeek must be called exactly once for text Q&A."""
     from app.services.ai_chat_service import AIChatService
