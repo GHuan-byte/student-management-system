@@ -337,34 +337,58 @@ pending confirmation action.
 
 ## 5. Manual Browser Acceptance Gate [USER]
 
-- [ ] 5.1 [USER] Dashboard右下角显示蓝色圆形AI Chat图标
-- [ ] 5.2 [USER] 学生管理页右下角显示同一个AI Chat图标
-- [ ] 5.3 [USER] 页面首次加载时只显示图标，Chat Panel默认关闭
-- [ ] 5.4 [USER] 点击图标后Chat Panel打开
-- [ ] 5.5 [USER] 点击关闭按钮后Chat Panel关闭
-- [ ] 5.6 [USER] Escape可以关闭Chat Panel
-- [ ] 5.7 [USER] 图标不会遮挡分页、按钮或Modal
-- [ ] 5.8 [USER] 学生Modal打开时Chat Panel自动关闭，历史保留
-- [ ] 5.9 [USER] 窄屏下Chat Panel不会严重溢出
-- [ ] 5.10 [USER] Enter发送消息
-- [ ] 5.11 [USER] Shift+Enter换行
-- [ ] 5.12 [USER] 请求期间不会重复发送
-- [ ] 5.13 [USER] 清空会话正常
-- [ ] 5.14 [USER] 页面切换后同一标签页历史恢复
-- [ ] 5.15 [USER] 询问学生总数返回当前真实数量
-- [ ] 5.16 [USER] 查询学号00001保留前导零
-- [ ] 5.17 [USER] 搜索专业可以调用MCP
-- [ ] 5.18 [USER] 新增学生首次只显示确认，不立即写入
-- [ ] 5.19 [USER] 取消新增后数据库不变
-- [ ] 5.20 [USER] 确认新增后只写入一次
-- [ ] 5.21 [USER] 修改学生需要确认
-- [ ] 5.22 [USER] 单条删除需要确认
-- [ ] 5.23 [USER] 批量删除需要确认
-- [ ] 5.24 [USER] API错误不会导致Chat Panel自动关闭
-- [ ] 5.25 [USER] 页面不显示reasoning_content
-- [ ] 5.26 [USER] 页面源代码不显示API Key、API Base或Model
-- [ ] 5.27 [USER] 页面不显示具体模型名
-- [ ] 5.28 [USER] Dashboard与学生管理原功能无回归
+- [x] 5.1 [USER] Dashboard右下角显示蓝色圆形AI Chat图标
+- [x] 5.2 [USER] 学生管理页右下角显示同一个AI Chat图标
+- [x] 5.3 [USER] 页面首次加载时只显示图标，Chat Panel默认关闭
+- [x] 5.4 [USER] 点击图标后Chat Panel打开
+- [x] 5.5 [USER] 点击关闭按钮后Chat Panel关闭
+- [x] 5.6 [USER] Escape可以关闭Chat Panel
+- [x] 5.7 [USER] 图标不会遮挡分页、按钮或Modal
+- [x] 5.8 [USER] 学生Modal打开时Chat Panel自动关闭，历史保留
+- [x] 5.9 [USER] 窄屏下Chat Panel不会严重溢出
+- [x] 5.10 [USER] Enter发送消息
+- [x] 5.11 [USER] Shift+Enter换行
+- [x] 5.12 [USER] 请求期间不会重复发送
+- [x] 5.13 [USER] 清空会话正常
+- [x] 5.14 [USER] 页面切换后同一标签页历史恢复
+- [x] 5.15 [USER] 询问学生总数返回当前真实数量
+- [x] 5.16 [USER] 查询学号00001保留前导零
+- [x] 5.17 [USER] 搜索专业可以调用MCP
+- [x] 5.18 [USER] 新增学生首次只显示确认，不立即写入
+- [x] 5.19 [USER] 取消新增后数据库不变
+- [x] 5.20 [USER] 确认新增后只写入一次
+- [x] 5.21 [USER] 修改学生需要确认
+- [x] 5.22 [USER] 单条删除需要确认
+- [x] 5.23 [USER] 批量删除需要确认
+- [x] 5.24 [USER] API错误不会导致Chat Panel自动关闭
+- [x] 5.25 [USER] 页面不显示reasoning_content
+- [x] 5.26 [USER] 页面源代码不显示API Key、API Base或Model
+- [x] 5.27 [USER] 页面不显示具体模型名
+- [x] 5.28 [USER] Dashboard与学生管理原功能无回归
+
+> **Manual Browser Acceptance:** Completed after the confirmed-action
+> failure-handling fix. AI Chat was verified on Dashboard and Students pages;
+> the panel supports open, close, Escape, Enter, Shift+Enter, duplicate-submit
+> prevention, history restore, and clearing. Database-backed count, leading-zero
+> lookup, and MCP search were verified. Visible replies strip DeepSeek Markdown
+> emphasis and omit `reasoning_content`.
+>
+> Read-only MCP operations succeed; write, batch, create, update, and delete
+> operations require confirmation. Cancelled writes do not modify data;
+> confirmed create, update, and delete execute once. The delete flow was
+> retested after the fix and its successful result matched the Flask Student API.
+> Failed MCP writes now return a deterministic safe failure reply rather than a
+> false success. Tokens cannot be replayed. API and business errors keep the
+> panel open without tracebacks. The frontend continues to use `textContent`;
+> no `reasoning_content` or sensitive configuration was exposed, and existing
+> Dashboard and student-management features remained functional.
+>
+> **Manual Browser Acceptance 5.1–5.28: PASS.**
+>
+> Earlier Evidence Gate results were invalidated by the confirmed-action
+> production-code fix. A complete Evidence Gate rerun is still required.
+> Manual Browser Acceptance is complete, but this Change is not ready for
+> Archive until the final Evidence Gate passes.
 
 ## 6. Archive Gate
 
