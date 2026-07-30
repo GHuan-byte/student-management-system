@@ -327,6 +327,39 @@ def test_confirm_returns_safe_envelope_and_receives_only_token() -> None:
     ))
 
 
+def test_confirm_failure_keeps_safe_envelope_without_success_reply() -> None:
+    """A business failure remains an HTTP response but is visible as failure."""
+    service = FakeAIChatService()
+    service.confirm_result = {
+        "success": False,
+        "reply": "操作执行失败，请检查请求参数后重新发起。",
+        "requires_confirmation": False,
+        "pending_action": None,
+        "action_result": {
+            "success": False,
+            "error": {"code": "validation_error"},
+        },
+    }
+
+    response = _client(service).post(
+        "/api/chat/actions/confirm", json={"confirmation_token": "signed-token"},
+    )
+
+    payload = response.get_json()
+    public_output = str(payload)
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["reply"] == "操作执行失败，请检查请求参数后重新发起。"
+    assert "成功" not in payload["data"]["reply"]
+    assert payload["data"]["action_result"] == {
+        "success": False,
+        "error": {"code": "validation_error"},
+    }
+    assert payload["error"] is None
+    assert "internal_error" not in public_output
+    assert service.confirm_calls == ["signed-token"]
+
+
 @pytest.mark.parametrize("body, content_type", [
     ("not-json", "text/plain"), ("{", "application/json"), ("[]", "application/json"),
 ])

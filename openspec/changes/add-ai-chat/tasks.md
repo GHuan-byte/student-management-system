@@ -242,6 +242,18 @@ pending confirmation action.
 - [x] GREEN: Normalize DeepSeek final replies before returning them to users
 - [x] VERIFY: Remove `**bold**` and `__emphasis__` markers while preserving content, newlines, tables, and leading zeros
 
+### 2.7c Confirmed Write Failure Reporting Fix
+
+- [x] RED: MCP write failure was incorrectly reported as a successful confirmed action
+- [x] GREEN: Build confirmed action responses from the actual MCP success state
+- [x] VERIFY: Failed writes show deterministic safe failure, execute once, and consume the token
+
+> **Manual Acceptance finding:** A blocking confirmed-write result defect was
+> found during browser acceptance. This production-code change invalidates the
+> previous Evidence Gate; the complete gate must be rerun. Delete-related
+> Manual Browser Acceptance items must be retested, and no Manual Acceptance
+> item is checked here.
+
 ### 2.8 AI Chat Frontend
 
 - [x] 2.8.1 Create app/templates/_ai_chat.html with floating icon and panel HTML

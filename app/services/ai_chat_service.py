@@ -296,22 +296,37 @@ class AIChatService:
         The response contains a deterministic Chinese reply and the
         sanitized result data, without raw MCP debug fields.
         """
-        summary = TOOL_SUMMARIES.get(tool_name, tool_name)
-        success = result.get("success", False)
-        action_result: dict[str, object] = {
-            "success": success,
-        }
-        if success and "data" in result:
-            action_result["data"] = AIChatService._sanitize_public_action_data(
-                result["data"],
-            )
+        success = result.get("success") is True
+        if success:
+            summary = TOOL_SUMMARIES.get(tool_name, tool_name)
+            action_result: dict[str, object] = {"success": True}
+            if "data" in result:
+                action_result["data"] = AIChatService._sanitize_public_action_data(
+                    result["data"],
+                )
+            return {
+                "success": True,
+                "reply": f"{summary}成功。",
+                "requires_confirmation": False,
+                "pending_action": None,
+                "action_result": action_result,
+            }
 
+        error = result.get("error")
+        error_code = (
+            error.get("code")
+            if isinstance(error, dict) and isinstance(error.get("code"), str)
+            else "mcp_tool_error"
+        )
         return {
-            "success": True,
-            "reply": f"{summary}成功。",
+            "success": False,
+            "reply": "操作执行失败，请检查请求参数后重新发起。",
             "requires_confirmation": False,
             "pending_action": None,
-            "action_result": action_result,
+            "action_result": {
+                "success": False,
+                "error": {"code": error_code},
+            },
         }
 
     @staticmethod

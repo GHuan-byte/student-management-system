@@ -3631,6 +3631,155 @@ def test_confirmed_action_result_strips_raw_mcp_diagnostics() -> None:
         assert forbidden not in public_output
 
 
+@pytest.mark.parametrize("error_code", ["validation_error", "student_not_found"])
+def test_confirmed_write_failure_is_not_reported_as_success(error_code: str) -> None:
+    """A failed confirmed write must expose failure, not a success reply."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = AIActionConfirmation(
+        secret_key="test-confirmation-secret",
+        token_ttl_seconds=300,
+    )
+    deepseek = FakeDeepSeekClient([])
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": error_code, "message": "private failure detail"},
+    })
+    service = AIChatService(
+        deepseek_client_factory=lambda: deepseek,
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+    )
+    token = confirmation.create_token({
+        "tool_name": "delete_student",
+        "arguments": {"student_id": 1},
+        "action_id": f"failed-delete-{error_code}",
+    })
+
+    result = _run_async(service.confirm_action(token))
+
+    assert result["success"] is False
+    assert "删除学生成功" not in result["reply"]
+    assert "失败" in result["reply"]
+    assert result["action_result"] == {
+        "success": False,
+        "error": {"code": error_code},
+    }
+    assert adapter.invoke_count == 1
+    assert adapter.called_tools == ["delete_student"]
+    assert deepseek.call_count == 0
+
+
+def test_confirmed_write_unknown_failure_is_safe_and_not_reported_as_success() -> None:
+    """Malformed failed MCP output must use a generic safe failure contract."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = AIActionConfirmation(
+        secret_key="test-confirmation-secret",
+        token_ttl_seconds=300,
+    )
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "message": "traceback private arguments=student_id",
+        "error": "unstructured failure",
+    })
+    service = AIChatService(
+        deepseek_client_factory=lambda: FakeDeepSeekClient([]),
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+    )
+    token = confirmation.create_token({
+        "tool_name": "delete_student",
+        "arguments": {"student_id": 1},
+        "action_id": "unknown-failed-delete",
+    })
+
+    result = _run_async(service.confirm_action(token))
+
+    assert result["success"] is False
+    assert result["action_result"] == {
+        "success": False,
+        "error": {"code": "mcp_tool_error"},
+    }
+    public_output = json.dumps(result, ensure_ascii=False)
+    assert "删除学生成功" not in public_output
+    assert "traceback" not in public_output
+    assert "student_id" not in public_output
+    assert adapter.invoke_count == 1
+
+
+def test_failed_confirmed_write_consumes_token_without_retrying_tool() -> None:
+    """A failed write remains consumed and cannot invoke the adapter twice."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_chat_service import AIChatService
+    from app.services.ai_errors import AIConfirmationReplayError
+
+    confirmation = AIActionConfirmation(
+        secret_key="test-confirmation-secret",
+        token_ttl_seconds=300,
+    )
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({
+        "success": False,
+        "error": {"code": "validation_error", "message": "private failure"},
+    })
+    service = AIChatService(
+        deepseek_client_factory=lambda: FakeDeepSeekClient([]),
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+    )
+    token = confirmation.create_token({
+        "tool_name": "delete_student",
+        "arguments": {"student_id": 1},
+        "action_id": "consumed-failed-delete",
+    })
+
+    result = _run_async(service.confirm_action(token))
+
+    assert result["action_result"]["success"] is False
+    with pytest.raises(AIConfirmationReplayError):
+        _run_async(service.confirm_action(token))
+    assert adapter.invoke_count == 1
+
+
+def test_confirmed_write_success_contract_is_unchanged() -> None:
+    """A successful confirmed write retains the existing reply and result shape."""
+    from app.services.ai_action_confirmation import AIActionConfirmation
+    from app.services.ai_chat_service import AIChatService
+
+    confirmation = AIActionConfirmation(
+        secret_key="test-confirmation-secret",
+        token_ttl_seconds=300,
+    )
+    adapter = FakeMCPToolAdapter()
+    adapter.add_invoke_result({"success": True, "data": {"id": 1}})
+    service = AIChatService(
+        deepseek_client_factory=lambda: FakeDeepSeekClient([]),
+        mcp_adapter_factory=lambda: adapter,
+        action_confirmation=confirmation,
+    )
+    token = confirmation.create_token({
+        "tool_name": "delete_student",
+        "arguments": {"student_id": 1},
+        "action_id": "successful-delete",
+    })
+
+    result = _run_async(service.confirm_action(token))
+
+    assert result == {
+        "success": True,
+        "reply": "删除学生成功。",
+        "requires_confirmation": False,
+        "pending_action": None,
+        "action_result": {"success": True, "data": {"id": 1}},
+    }
+    assert adapter.invoke_count == 1
+
+
 def test_update_student_returns_pending_action() -> None:
     """update_student also returns pending action."""
     from app.services.ai_chat_service import AIChatService
