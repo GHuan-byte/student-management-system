@@ -295,16 +295,33 @@ pending confirmation action.
 
 ## 4. Superpowers Evidence Gate
 
-- [ ] 4.1 Run `git diff --check` to verify no whitespace errors
-- [ ] 4.2 Run Python compileall to verify no syntax errors
-- [ ] 4.3 Run full pytest suite
-- [ ] 4.4 Run MCP self-check with temporary database
-- [ ] 4.5 Start Flask app and verify health endpoint
-- [ ] 4.6 Start Flask app and verify POST /api/chat returns ai_not_configured (no API key)
-- [ ] 4.7 Run `openspec status --change "add-ai-chat"` and verify all artifacts done
-- [ ] 4.8 Run `git status` and review changed files
-- [ ] 4.9 If any file was modified after evidence collection started, invalidate all evidence and re-run from 4.1
-- [ ] 4.10 Generate final evidence report with real command output
+- [x] 4.1 Run `git diff --check` to verify no whitespace errors
+- [x] 4.2 Run Python compileall to verify no syntax errors
+- [x] 4.3 Run full pytest suite
+- [x] 4.4 Run MCP self-check with temporary database
+- [x] 4.5 Start Flask app and verify health endpoint
+- [x] 4.6 Verify POST /api/chat returns ai_not_configured without AI config
+- [x] 4.7 Run OpenSpec status/validation
+- [x] 4.8 Review Git status
+- [x] 4.9 Verify Evidence invalidation rule was not triggered
+- [x] 4.10 Generate final Evidence report
+
+> **Frozen Evidence record:** The Evidence commands above completed while the
+> working tree was clean, before this `tasks.md` update. This edit records
+> those frozen results only; it does not alter production code, tests, or the
+> evidence they produced.
+>
+> - Branch: `rewrite-v2`; HEAD: `feb441c Normalize AI chat reply formatting`.
+> - `git diff --check` and `compileall app tests` passed; full pytest: 438
+>   passed in 4.15s; format regression: 12 passed.
+> - MCP self-check succeeded, discovered 10 tools, used and cleaned a
+>   temporary database, and left the production database unchanged.
+> - Flask health returned HTTP 200 with `data.status=ok`; the isolated
+>   unconfigured-AI probe returned HTTP 503 / `ai_not_configured`, with zero
+>   DeepSeek and MCP calls.
+> - OpenSpec validation was valid; Git stayed clean throughout collection;
+>   no secret leakage, production-database modification, background process,
+>   or occupied test port remained.
 
 ## 5. Manual Browser Acceptance Gate [USER]
 
