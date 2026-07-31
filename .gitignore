@@ -30,6 +30,7 @@ Thumbs.db
 # Logs
 logs/
 *.log
+instance/logs/
 
 # Tooling cache
 .pytest_cache/
@@ -37,3 +38,8 @@ logs/
 # Exports / Uploads
 exports/
 uploads/
+
+# Flask runtime database and manual evidence
+instance/*.db
+instance/*.db-*
+instance/manual_*/

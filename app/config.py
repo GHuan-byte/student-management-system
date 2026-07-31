@@ -10,6 +10,9 @@ from typing import Any
 DEV_SECRET_KEY = "dev-secret-change-in-production"
 PLACEHOLDER_SECRET_KEY = "replace-with-development-secret"
 DEFAULT_DATABASE_NAME = "students_v2.db"
+DEFAULT_LOG_FILE_NAME = "app.log"
+DEFAULT_LOG_MAX_BYTES = 5 * 1024 * 1024
+DEFAULT_LOG_BACKUP_COUNT = 5
 
 # ---------------------------------------------------------------------------
 # AI Chat environment variable names
@@ -144,6 +147,12 @@ class Config:
             "TESTING": self.testing,
             "SECRET_KEY": os.environ.get("SECRET_KEY", DEV_SECRET_KEY),
             "LOG_LEVEL": os.environ.get("LOG_LEVEL", "INFO").upper(),
+            "LOG_CONSOLE_ENABLED": _parse_bool_env("LOG_CONSOLE_ENABLED") if os.environ.get("LOG_CONSOLE_ENABLED") is not None else True,
+            "LOG_FILE_ENABLED": _parse_bool_env("LOG_FILE_ENABLED"),
+            "LOG_FILE_PATH": os.environ.get("LOG_FILE_PATH") or None,
+            "LOG_TEST_FILE_PATH": None,
+            "LOG_FILE_MAX_BYTES": _parse_int_env("LOG_FILE_MAX_BYTES") or DEFAULT_LOG_MAX_BYTES,
+            "LOG_FILE_BACKUP_COUNT": _parse_int_env("LOG_FILE_BACKUP_COUNT") or DEFAULT_LOG_BACKUP_COUNT,
             "DATABASE_PATH": os.environ.get("DATABASE_PATH"),
         }
         mapping.update(_build_ai_config())
@@ -175,6 +184,36 @@ class Config:
             config["DATABASE_PATH"] = str(resolved_path)
 
         self.validate_final(config)
+        self.finalize_logging(config, project_root=project_root, instance_path=instance_path)
+
+    def finalize_logging(
+        self,
+        config: dict[str, Any],
+        *,
+        project_root: Path,
+        instance_path: Path,
+    ) -> None:
+        """Resolve optional file logging without creating directories."""
+        enabled = bool(config.get("LOG_FILE_ENABLED"))
+        raw_path = config.get("LOG_FILE_PATH")
+        if self.testing:
+            raw_path = config.get("LOG_TEST_FILE_PATH")
+            if not enabled or not raw_path:
+                config["LOG_FILE_ENABLED"] = False
+                config["LOG_FILE_PATH"] = None
+                return
+        if not enabled:
+            config["LOG_FILE_PATH"] = None
+            return
+        path = Path(str(raw_path)) if raw_path else instance_path / "logs" / DEFAULT_LOG_FILE_NAME
+        if not path.is_absolute():
+            path = project_root / path
+        path = path.resolve()
+        if self.testing and path.is_relative_to((instance_path / "logs").resolve()):
+            config["LOG_FILE_ENABLED"] = False
+            config["LOG_FILE_PATH"] = None
+            return
+        config["LOG_FILE_PATH"] = str(path)
 
     def validate_final(self, config: dict[str, Any]) -> None:
         """Allow subclasses to validate finalized configuration."""

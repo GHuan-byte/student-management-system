@@ -81,9 +81,9 @@ def create_app(
         project_root=project_root,
         instance_path=Path(app.instance_path),
     )
+    configure_logging(app)
     app.extensions["student_service_factory"] = lambda: create_student_service(app)
     app.extensions["ai_chat_service_factory"] = lambda: create_ai_chat_service(app)
-    configure_logging(app)
     register_error_handlers(app)
     register_cli_commands(app)
     register_blueprints(app)

@@ -6,7 +6,8 @@ import logging
 
 from mcp.server.fastmcp import FastMCP
 
-from mcp_server.dependencies import create_student_service
+from app.logging_config import configure_mcp_logging
+from mcp_server.dependencies import create_student_service, get_server_config
 from mcp_server.student_tools import register_student_tools
 
 SERVER_NAME = "Student Management MCP Server"
@@ -15,16 +16,12 @@ SERVER_INSTRUCTIONS = (
     "layer. Student tools reuse the same validation and database rules as the "
     "Flask REST API."
 )
+LOGGER_NAME = "mcp_server.server"
 
 
 def configure_server_logging() -> None:
     """Configure stderr logging for MCP server startup and tool operations."""
-    root_logger = logging.getLogger()
-    if not root_logger.handlers:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        )
+    configure_mcp_logging(get_server_config(load_env=True))
 
 
 def create_mcp_server() -> FastMCP:
@@ -41,7 +38,8 @@ def create_mcp_server() -> FastMCP:
 
 def main() -> None:
     """Start the MCP server over stdio."""
-    logging.getLogger(__name__).info("Starting MCP server in stdio mode")
+    configure_server_logging()
+    logging.getLogger(LOGGER_NAME).info("Starting MCP server in stdio mode")
     create_mcp_server().run(transport="stdio")
 
 
