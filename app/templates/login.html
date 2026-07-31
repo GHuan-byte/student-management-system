@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>登录 | 学生管理系统 V2</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  </head>
+  <body class="login-page">
+    <main class="login-card" aria-labelledby="login-title">
+      <div class="login-brand">Student Management System V2</div>
+      <h1 id="login-title">登录</h1>
+      <p class="login-subtitle">请使用分配的账号登录学生管理系统</p>
+      {% if error %}
+      <div class="login-error" role="alert">{{ error }}</div>
+      {% endif %}
+      <form class="login-form" method="post" action="{{ url_for('auth.login_post', next=next_url) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+          <label for="username">用户名</label>
+          <input id="username" name="username" type="text" autocomplete="username" required>
+        </div>
+        <div class="form-group">
+          <label for="password">密码</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="login-submit" type="submit">登录</button>
+      </form>
+    </main>
+  </body>
+</html>

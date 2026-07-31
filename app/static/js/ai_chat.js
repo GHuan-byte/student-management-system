@@ -26,6 +26,17 @@ document.addEventListener("DOMContentLoaded", () => {
   let confirming = false;
   let pendingAction = null;
 
+  function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? "";
+  }
+
+  function jsonHeaders() {
+    return {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken(),
+    };
+  }
+
   function setOpen(isOpen) {
     panel.hidden = !isOpen;
     panel.setAttribute("aria-hidden", String(!isOpen));
@@ -110,7 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setConfirmationBusy(true);
     let safeError = "暂时无法确认操作，请稍后重试。";
     try {
-      const response = await fetch("/api/chat/actions/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmation_token: pendingAction.confirmationToken }) });
+      const response = await fetch("/api/chat/actions/confirm", { method: "POST", headers: jsonHeaders(), body: JSON.stringify({ confirmation_token: pendingAction.confirmationToken }) });
       const payload = await response.json();
       if (!response.ok || !payload.success) { safeError = payload.message || safeError; throw new Error("confirmation request failed"); }
       const reply = payload.data && payload.data.reply;
@@ -155,7 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setBusy(true);
     let safeError = "暂时无法发送消息，请稍后重试。";
     try {
-      const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages }) });
+      const response = await fetch("/api/chat", { method: "POST", headers: jsonHeaders(), body: JSON.stringify({ messages }) });
       const payload = await response.json();
       if (!response.ok || !payload.success) { safeError = payload.message || safeError; throw new Error("chat request failed"); }
       const data = payload.data || {};

@@ -24,8 +24,12 @@
 
   <section class="toolbar panel">
     <div class="toolbar-group">
+      {% if current_user.role in ["staff", "admin"] %}
       <button type="button" data-open-create-modal>新增学生</button>
+      {% endif %}
+      {% if current_user.role == "admin" %}
       <button type="button" class="secondary disabled" data-batch-delete-button disabled>批量删除</button>
+      {% endif %}
     </div>
     <div class="toolbar-meta">
       <span data-total-summary>共 0 条匹配记录</span>

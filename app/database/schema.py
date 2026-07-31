@@ -33,6 +33,20 @@ CREATE TABLE IF NOT EXISTS students (
 )
 """
 
+CREATE_USERS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('viewer', 'staff', 'admin')),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    auth_version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_login_at TEXT
+)
+"""
+
 
 def initialize_database(database_path: str | Path) -> None:
     """Create required tables without deleting existing data."""
@@ -41,5 +55,6 @@ def initialize_database(database_path: str | Path) -> None:
     try:
         with connection:
             connection.execute(CREATE_STUDENTS_TABLE_SQL)
+            connection.execute(CREATE_USERS_TABLE_SQL)
     finally:
         connection.close()

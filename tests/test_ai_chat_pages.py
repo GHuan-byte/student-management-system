@@ -7,9 +7,20 @@ import pytest
 from app import create_app
 
 
+def _authenticated_client(app):
+    client = app.test_client()
+    service = app.extensions["user_service_factory"]()
+    user = service.get_user_by_username("page-admin") or service.create_user("page-admin", "secret1", "admin")
+    with client.session_transaction() as session:
+        session["user_id"] = user["id"]
+        session["auth_version"] = user["auth_version"]
+        session["csrf_token"] = "test-csrf-token"
+    return client
+
+
 def test_base_pages_include_one_ai_chat_shell_and_assets():
     app = create_app("testing", load_env=False)
-    client = app.test_client()
+    client = _authenticated_client(app)
     for path in ("/", "/students"):
         html = client.get(path).get_data(as_text=True)
         assert html.count('class="ai-chat-toggle"') == 1
@@ -21,7 +32,7 @@ def test_base_pages_include_one_ai_chat_shell_and_assets():
 
 def test_ai_chat_shell_includes_confirmation_and_clear_controls():
     app = create_app("testing", load_env=False)
-    html = app.test_client().get("/").get_data(as_text=True)
+    html = _authenticated_client(app).get("/").get_data(as_text=True)
 
     assert 'class="ai-chat-clear"' in html
     assert 'class="ai-chat-confirmation"' in html
@@ -45,7 +56,7 @@ def test_shared_layout_renders_one_safe_ai_chat_instance_without_page_regression
         "DEEPSEEK_API_BASE": "https://api.invalid.example/v1",
         "DEEPSEEK_MODEL": "test-model-must-not-render",
     }, load_env=False)
-    response = app.test_client().get(path)
+    response = _authenticated_client(app).get(path)
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200

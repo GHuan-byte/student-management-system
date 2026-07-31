@@ -47,16 +47,77 @@ class FakeAIChatService:
         return dict(self.confirm_result)
 
 
-def _client(service: FakeAIChatService, **overrides: object):
+def _client(service: FakeAIChatService, role: str = "admin", **overrides: object):
     config = {
         "TESTING": True,
         "AI_MAX_HISTORY_MESSAGES": 2,
         "AI_MAX_MESSAGE_LENGTH": 20,
+        "SECRET_KEY": "test-secret-not-for-production",
+        "AI_WRITE_CONFIRMATION": False,
+        "BOOTSTRAP_DEFAULT_USERS_ENABLED": True,
+        "BOOTSTRAP_VIEWER_USERNAME": "viewer",
+        "BOOTSTRAP_VIEWER_PASSWORD": "viewer1",
+        "BOOTSTRAP_STAFF_USERNAME": "staff",
+        "BOOTSTRAP_STAFF_PASSWORD": "staff1",
+        "BOOTSTRAP_ADMIN_USERNAME": "admin",
+        "BOOTSTRAP_ADMIN_PASSWORD": "admin1",
     }
     config.update(overrides)
     app = create_app("testing", config_overrides=config, load_env=False)
     app.extensions["ai_chat_service_factory"] = lambda: service
-    return app.test_client()
+    client = app.test_client()
+    user = app.extensions["user_service_factory"]().get_user_by_username(role)
+    with client.session_transaction() as session:
+        session["user_id"] = user["id"]
+        session["auth_version"] = user["auth_version"]
+        session["csrf_token"] = "test-csrf-token"
+    return AuthenticatedClient(client)
+
+
+def _pending_write_result(app, tool_name: str, action_id: str = "action-1") -> dict[str, object]:
+    token = app.extensions["ai_action_confirmation"].create_token({
+        "tool_name": tool_name,
+        "arguments": {"student_id": 1},
+        "action_id": action_id,
+    })
+    return {
+        "success": True,
+        "reply": "requires confirmation",
+        "requires_confirmation": True,
+        "confirmation_token": token,
+        "pending_action": {"summary": tool_name, "safe_arguments": "{}"},
+    }
+
+
+class AuthenticatedClient:
+    def __init__(self, client):
+        self._client = client
+
+    def __getattr__(self, name: str):
+        return getattr(self._client, name)
+
+    @property
+    def application(self):
+        return self._client.application
+
+    def post(self, *args: object, **kwargs: object):
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers.setdefault("X-CSRF-Token", "test-csrf-token")
+        return self._client.post(*args, headers=headers, **kwargs)
+
+    def get(self, *args: object, **kwargs: object):
+        return self._client.get(*args, **kwargs)
+
+
+def _authenticated_client_for_app(app):
+    client = app.test_client()
+    service = app.extensions["user_service_factory"]()
+    user = service.get_user_by_username("route-admin") or service.create_user("route-admin", "secret1", "admin")
+    with client.session_transaction() as session:
+        session["user_id"] = user["id"]
+        session["auth_version"] = user["auth_version"]
+        session["csrf_token"] = "test-csrf-token"
+    return AuthenticatedClient(client)
 
 
 def _assert_validation(response: Any) -> None:
@@ -98,7 +159,7 @@ def test_unconfigured_chat_returns_503_before_mcp_or_deepseek() -> None:
         ai_configured=app.config["AI_CONFIGURED"],
     )
 
-    response = app.test_client().post(
+    response = _authenticated_client_for_app(app).post(
         "/api/chat", json={"messages": [{"role": "user", "content": "test"}]}
     )
     payload = response.get_json()
@@ -146,7 +207,7 @@ def test_app_factory_short_circuits_unconfigured_chat_before_dependencies(
         load_env=False,
     )
 
-    response = app.test_client().post(
+    response = _authenticated_client_for_app(app).post(
         "/api/chat", json={"messages": [{"role": "user", "content": "test"}]}
     )
 
@@ -273,6 +334,141 @@ def test_post_chat_preserves_pending_action_without_recreating_it() -> None:
     assert data["pending_action"] == {"summary": "新增学生", "safe_arguments": "{}"}
     assert data["confirmation_token"] == "signed-token"
     assert len(service.calls) == 1
+
+
+def test_viewer_chat_write_action_does_not_return_confirmation_token() -> None:
+    service = FakeAIChatService()
+    client = _client(service, role="viewer", AI_WRITE_CONFIRMATION=True)
+    service.result = _pending_write_result(client.application, "add_student", "viewer-add")
+
+    response = client.post("/api/chat", json={"messages": [{"role": "user", "content": "add"}]})
+
+    assert response.status_code == 403
+    data = response.get_json().get("data")
+    assert not data or "confirmation_token" not in data
+    assert "confirmation_token" not in response.get_data(as_text=True)
+
+
+def test_staff_chat_delete_action_does_not_return_confirmation_token() -> None:
+    service = FakeAIChatService()
+    client = _client(service, role="staff", AI_WRITE_CONFIRMATION=True)
+    service.result = _pending_write_result(client.application, "delete_student", "staff-delete")
+
+    response = client.post("/api/chat", json={"messages": [{"role": "user", "content": "delete"}]})
+
+    assert response.status_code == 403
+    data = response.get_json().get("data")
+    assert not data or "confirmation_token" not in data
+    assert "confirmation_token" not in response.get_data(as_text=True)
+
+
+def test_staff_chat_update_action_returns_confirmation_token() -> None:
+    service = FakeAIChatService()
+    client = _client(service, role="staff", AI_WRITE_CONFIRMATION=True)
+    service.result = _pending_write_result(client.application, "update_student", "staff-update")
+
+    response = client.post("/api/chat", json={"messages": [{"role": "user", "content": "update"}]})
+
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["requires_confirmation"] is True
+    assert isinstance(data["confirmation_token"], str)
+    assert data["pending_action"]["summary"] == "update_student"
+
+
+def test_admin_chat_delete_action_returns_confirmation_token() -> None:
+    service = FakeAIChatService()
+    client = _client(service, role="admin", AI_WRITE_CONFIRMATION=True)
+    service.result = _pending_write_result(client.application, "batch_delete_students", "admin-delete")
+
+    response = client.post("/api/chat", json={"messages": [{"role": "user", "content": "delete"}]})
+
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["requires_confirmation"] is True
+    assert isinstance(data["confirmation_token"], str)
+    assert data["pending_action"]["summary"] == "batch_delete_students"
+
+
+@pytest.mark.parametrize("tool_name", ["add_student", "update_student", "delete_student"])
+def test_viewer_chat_write_action_denial_records_safe_security_event(
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+) -> None:
+    service = FakeAIChatService()
+    client = _client(service, role="viewer", AI_WRITE_CONFIRMATION=True)
+    service.result = _pending_write_result(client.application, tool_name, f"viewer-{tool_name}")
+    events = []
+    monkeypatch.setattr(
+        "app.routes.chat.log_security_event",
+        lambda event, metadata=None: events.append((event, metadata or {})),
+        raising=False,
+    )
+    token = service.result["confirmation_token"]
+    user = client.application.extensions["user_service_factory"]().get_user_by_username("viewer")
+
+    response = client.post("/api/chat", json={"messages": [{"role": "user", "content": "write"}]})
+
+    assert response.status_code == 403
+    body = response.get_data(as_text=True)
+    assert "confirmation_token" not in body
+    assert "pending_action" not in body
+    assert events == [(
+        "authorization_denied",
+            {
+                "user_id": user["id"],
+                "username": "viewer",
+            "role": "viewer",
+            "endpoint": "chat.chat",
+            "method": "POST",
+            "tool_name": tool_name,
+            "outcome": "denied",
+            "reason": "ai_pending_action_forbidden",
+        },
+    )]
+    event_text = str(events)
+    assert token not in event_text
+    assert "student_id" not in event_text
+    assert "write" not in event_text
+
+
+@pytest.mark.parametrize("tool_name", ["delete_student", "batch_delete_students"])
+def test_staff_chat_delete_action_denial_records_safe_security_event(
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+) -> None:
+    service = FakeAIChatService()
+    client = _client(service, role="staff", AI_WRITE_CONFIRMATION=True)
+    service.result = _pending_write_result(client.application, tool_name, f"staff-{tool_name}")
+    events = []
+    monkeypatch.setattr(
+        "app.routes.chat.log_security_event",
+        lambda event, metadata=None: events.append((event, metadata or {})),
+        raising=False,
+    )
+    token = service.result["confirmation_token"]
+    user = client.application.extensions["user_service_factory"]().get_user_by_username("staff")
+
+    response = client.post("/api/chat", json={"messages": [{"role": "user", "content": "delete"}]})
+
+    assert response.status_code == 403
+    assert "confirmation_token" not in response.get_data(as_text=True)
+    assert events == [(
+        "authorization_denied",
+            {
+                "user_id": user["id"],
+                "username": "staff",
+            "role": "staff",
+            "endpoint": "chat.chat",
+            "method": "POST",
+            "tool_name": tool_name,
+            "outcome": "denied",
+            "reason": "ai_pending_action_forbidden",
+        },
+    )]
+    event_text = str(events)
+    assert token not in event_text
+    assert "student_id" not in event_text
 
 
 def test_post_chat_maps_ai_client_error_to_safe_json() -> None:

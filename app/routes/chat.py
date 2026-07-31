@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from flask import Blueprint, current_app, request
+from flask import Blueprint, current_app, g, request
 from werkzeug.exceptions import BadRequest
 
+from app.auth import can_confirm_action, role_can_execute_ai_tool
+from app.logging_config import log_security_event
 from app.services.ai_errors import AIClientError
 from app.utils.response import api_error, api_success
 
@@ -110,6 +112,31 @@ def _public_chat_data(result: dict[str, object]) -> dict[str, object]:
     return data
 
 
+def _authorize_pending_action_response(result: dict[str, object]):
+    if not result.get("requires_confirmation"):
+        return None
+    token = result.get("confirmation_token")
+    if not isinstance(token, str) or not token.strip():
+        return None
+    confirmation = current_app.extensions.get("ai_action_confirmation")
+    current_user = getattr(g, "current_user", None)
+    if confirmation is None or current_user is None:
+        return None
+    payload = confirmation.verify_token(token)
+    if can_confirm_action(current_user["role"], payload.get("tool_name")):
+        return None
+    _log_ai_authorization_denied(
+        current_user=current_user,
+        tool_name=payload.get("tool_name"),
+        reason="ai_pending_action_forbidden",
+    )
+    return api_error(
+        message="Forbidden",
+        error={"code": "forbidden", "details": None},
+        status_code=403,
+    )
+
+
 def _public_confirm_data(result: dict[str, object]) -> dict[str, object]:
     """Project confirmation output without token or invocation internals."""
     return {
@@ -150,6 +177,42 @@ def _confirmation_token(payload: Any) -> str:
     return token
 
 
+def _authorize_confirmation_token(token: str):
+    confirmation = current_app.extensions.get("ai_action_confirmation")
+    current_user = getattr(g, "current_user", None)
+    if confirmation is None or current_user is None:
+        return None
+    payload = confirmation.verify_token(token)
+    if role_can_execute_ai_tool(current_user["role"], payload.get("tool_name")):
+        return None
+    _log_ai_authorization_denied(
+        current_user=current_user,
+        tool_name=payload.get("tool_name"),
+        reason="ai_confirmation_forbidden",
+    )
+    return api_error(
+        message="Forbidden",
+        error={"code": "forbidden", "details": None},
+        status_code=403,
+    )
+
+
+def _log_ai_authorization_denied(*, current_user: dict[str, Any], tool_name: Any, reason: str) -> None:
+    log_security_event(
+        "authorization_denied",
+        metadata={
+            "user_id": current_user["id"],
+            "username": current_user["username"],
+            "role": current_user["role"],
+            "endpoint": request.endpoint,
+            "method": request.method,
+            "tool_name": tool_name if isinstance(tool_name, str) else "unknown",
+            "outcome": "denied",
+            "reason": reason,
+        },
+    )
+
+
 @chat_bp.post("/api/chat")
 def chat():
     """Validate browser messages and delegate one request to AIChatService."""
@@ -169,6 +232,12 @@ def chat():
             error={"code": "internal_error", "details": None},
             status_code=500,
         )
+    try:
+        forbidden = _authorize_pending_action_response(result)
+    except AIClientError as error:
+        return _map_ai_error(error)
+    if forbidden is not None:
+        return forbidden
     return api_success(data=_public_chat_data(result))
 
 
@@ -179,6 +248,12 @@ def confirm_chat_action():
         token = _confirmation_token(_require_json_object())
     except (BadRequest, ValueError, TypeError):
         return _validation_error("确认请求无效")
+    try:
+        forbidden = _authorize_confirmation_token(token)
+    except AIClientError as error:
+        return _map_ai_error(error)
+    if forbidden is not None:
+        return forbidden
 
     service_factory = current_app.extensions["ai_chat_service_factory"]
     try:

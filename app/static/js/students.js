@@ -65,6 +65,7 @@ const sortLabels = {
 const page = document.querySelector("[data-students-page]");
 
 if (page) {
+  const currentRole = document.querySelector("[data-current-role]")?.dataset.currentRole ?? "viewer";
   const elements = {
     tableWrap: page.querySelector("[data-table-wrap]"),
     tableBody: page.querySelector("[data-students-body]"),
@@ -107,6 +108,17 @@ if (page) {
 
   void initialize();
 
+  function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? "";
+  }
+
+  function jsonHeaders() {
+    return {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken(),
+    };
+  }
+
   async function initialize() {
     try {
       enforceClosedModalState();
@@ -124,8 +136,8 @@ if (page) {
 
   function bindEvents() {
     elements.searchForm.addEventListener("submit", handleSearchSubmit);
-    elements.openCreateButton.addEventListener("click", openCreateModal);
-    elements.batchDeleteButton.addEventListener("click", handleBatchDelete);
+    elements.openCreateButton?.addEventListener("click", openCreateModal);
+    elements.batchDeleteButton?.addEventListener("click", handleBatchDelete);
     elements.prevPageButton.addEventListener("click", () => changePage(state.currentPage - 1));
     elements.nextPageButton.addEventListener("click", () => changePage(state.currentPage + 1));
     elements.selectAllCheckbox.addEventListener("change", handleToggleSelectAll);
@@ -223,9 +235,7 @@ if (page) {
       const endpoint = isCreateMode ? "/api/students" : `/api/students/${state.editingStudentId}`;
       const response = await fetch(endpoint, {
         method: isCreateMode ? "POST" : "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: jsonHeaders(),
         body: JSON.stringify(payload),
       });
       const result = await response.json();
@@ -267,9 +277,7 @@ if (page) {
     try {
       const response = await fetch("/api/students/batch-delete", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: jsonHeaders(),
         body: JSON.stringify({
           student_ids: [...state.selectedIds],
         }),
@@ -385,6 +393,9 @@ if (page) {
       try {
         const response = await fetch(`/api/students/${studentId}`, {
           method: "DELETE",
+          headers: {
+            "X-CSRF-Token": csrfToken(),
+          },
         });
         const result = await response.json();
         if (!response.ok || !result.success) {
@@ -434,8 +445,8 @@ if (page) {
         <td>${renderValue(student.email)}</td>
         <td>
           <div class="row-actions">
-            <button type="button" data-action="edit" data-student-id="${student.id}">编辑</button>
-            <button type="button" class="secondary" data-action="delete" data-student-id="${student.id}">删除</button>
+            ${currentRole === "staff" || currentRole === "admin" ? `<button type="button" data-action="edit" data-student-id="${student.id}">编辑</button>` : ""}
+            ${currentRole === "admin" ? `<button type="button" class="secondary" data-action="delete" data-student-id="${student.id}">删除</button>` : ""}
           </div>
         </td>
       `;
@@ -533,7 +544,9 @@ if (page) {
 
   function setSubmitting(isSubmitting) {
     state.submitting = isSubmitting;
-    elements.openCreateButton.disabled = isSubmitting;
+    if (elements.openCreateButton) {
+      elements.openCreateButton.disabled = isSubmitting;
+    }
     elements.closeButton.disabled = isSubmitting;
     elements.cancelButton.disabled = isSubmitting;
     syncModalUi();
@@ -577,8 +590,10 @@ if (page) {
     elements.selectAllCheckbox.disabled = !visibleIds.length || state.loading;
 
     const disableBatchDelete = state.batchDeleting || state.selectedIds.size === 0;
-    elements.batchDeleteButton.disabled = disableBatchDelete;
-    elements.batchDeleteButton.classList.toggle("disabled", disableBatchDelete);
+    if (elements.batchDeleteButton) {
+      elements.batchDeleteButton.disabled = disableBatchDelete;
+      elements.batchDeleteButton.classList.toggle("disabled", disableBatchDelete);
+    }
   }
 
   function changePage(nextPage) {

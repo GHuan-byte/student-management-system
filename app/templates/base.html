@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}学生管理系统 V2{% endblock %}</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/ai_chat.css') }}">
   </head>
@@ -16,6 +17,16 @@
           <small>Dashboard & Student Workspace</small>
         </div>
       </div>
+      {% if current_user %}
+      <div class="topbar-user" data-current-role="{{ current_user.role }}">
+        <span data-current-username>{{ current_user.username }}</span>
+        <span data-current-role-label>{{ current_user.role }}</span>
+        <form method="post" action="{{ url_for('auth.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary">退出</button>
+        </form>
+      </div>
+      {% endif %}
     </header>
 
     <div class="app-layout">

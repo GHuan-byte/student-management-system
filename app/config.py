@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,18 @@ AI_INT_VARS = (
 AI_BOOL_VARS = (
     "DEEPSEEK_THINKING",
     "DEEPSEEK_TRUST_ENV",
+)
+
+BOOTSTRAP_USERNAME_DEFAULTS = {
+    "BOOTSTRAP_VIEWER_USERNAME": "viewer",
+    "BOOTSTRAP_STAFF_USERNAME": "staff",
+    "BOOTSTRAP_ADMIN_USERNAME": "admin",
+}
+
+BOOTSTRAP_PASSWORD_VARS = (
+    "BOOTSTRAP_VIEWER_PASSWORD",
+    "BOOTSTRAP_STAFF_PASSWORD",
+    "BOOTSTRAP_ADMIN_PASSWORD",
 )
 
 ALLOWED_REASONING_EFFORTS = frozenset({"high", "max"})
@@ -154,6 +167,20 @@ class Config:
             "LOG_FILE_MAX_BYTES": _parse_int_env("LOG_FILE_MAX_BYTES") or DEFAULT_LOG_MAX_BYTES,
             "LOG_FILE_BACKUP_COUNT": _parse_int_env("LOG_FILE_BACKUP_COUNT") or DEFAULT_LOG_BACKUP_COUNT,
             "DATABASE_PATH": os.environ.get("DATABASE_PATH"),
+            "BOOTSTRAP_DEFAULT_USERS_ENABLED": _parse_bool_env("BOOTSTRAP_DEFAULT_USERS_ENABLED"),
+            **{
+                key: os.environ.get(key, default)
+                for key, default in BOOTSTRAP_USERNAME_DEFAULTS.items()
+            },
+            **{
+                key: os.environ.get(key) or None
+                for key in BOOTSTRAP_PASSWORD_VARS
+            },
+            "SESSION_COOKIE_NAME": os.environ.get("SESSION_COOKIE_NAME") or "student_v2_session",
+            "SESSION_COOKIE_HTTPONLY": True,
+            "SESSION_COOKIE_SAMESITE": "Lax",
+            "SESSION_COOKIE_SECURE": False,
+            "PERMANENT_SESSION_LIFETIME_SECONDS": _parse_int_env("PERMANENT_SESSION_LIFETIME_SECONDS") or 3600,
         }
         mapping.update(_build_ai_config())
         return mapping
@@ -182,6 +209,9 @@ class Config:
             if not resolved_path.is_absolute():
                 resolved_path = project_root / resolved_path
             config["DATABASE_PATH"] = str(resolved_path)
+
+        lifetime_seconds = int(config.get("PERMANENT_SESSION_LIFETIME_SECONDS") or 3600)
+        config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=lifetime_seconds)
 
         self.validate_final(config)
         self.finalize_logging(config, project_root=project_root, instance_path=instance_path)
@@ -239,11 +269,12 @@ class ProductionConfig(Config):
         mapping["APP_ENV"] = "production"
         mapping["DEBUG"] = False
         mapping["TESTING"] = False
+        mapping["SESSION_COOKIE_SECURE"] = True
         return mapping
 
     def validate_final(self, config: dict[str, Any]) -> None:
         secret_key = config.get("SECRET_KEY")
-        if not secret_key or secret_key == DEV_SECRET_KEY:
+        if not secret_key or secret_key in INSECURE_SECRET_KEYS:
             raise RuntimeError(
                 "Production SECRET_KEY must be set and must not use the development default."
             )

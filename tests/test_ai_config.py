@@ -505,6 +505,12 @@ def test_html_does_not_leak_credentials(monkeypatch: pytest.MonkeyPatch) -> None
 
     app = create_app(config_name="testing", load_env=False)
     client = app.test_client()
+    user_service = app.extensions["user_service_factory"]()
+    user = user_service.get_user_by_username("html-admin") or user_service.create_user("html-admin", "secret1", "admin")
+    with client.session_transaction() as session:
+        session["user_id"] = user["id"]
+        session["auth_version"] = user["auth_version"]
+        session["csrf_token"] = "test-csrf-token"
 
     for path in ("/", "/students"):
         response = client.get(path)
