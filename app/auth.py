@@ -33,6 +33,9 @@ ENDPOINT_ROLES: dict[str, frozenset[str]] = {
     "students.batch_delete_students": ADMIN_ROLES,
     "chat.chat": READ_ROLES,
     "chat.confirm_chat_action": READ_ROLES,
+    "chat.get_guided_action": READ_ROLES,
+    "chat.confirm_guided_action": READ_ROLES,
+    "chat.cancel_guided_action": READ_ROLES,
     "auth.logout": READ_ROLES,
 }
 

@@ -55,6 +55,8 @@ def create_ai_chat_service(app: Flask):
         action_confirmation=confirmation,
         max_tool_rounds=app.config["AI_MAX_TOOL_ROUNDS"],
         ai_configured=app.config["AI_CONFIGURED"],
+        action_store=app.extensions.get("ai_action_store"),
+        action_ttl_seconds=app.config.get("AI_CONFIRMATION_TOKEN_TTL_SECONDS") or 120,
     )
 
 
@@ -89,6 +91,9 @@ def create_app(
         "app.auth", fromlist=["create_user_service"]
     ).create_user_service(app.config["DATABASE_PATH"])
     app.extensions["student_service_factory"] = lambda: create_student_service(app)
+    from app.services.ai_action_store import AIActionStore
+
+    app.extensions["ai_action_store"] = AIActionStore()
     if app.config["AI_WRITE_CONFIRMATION"]:
         from app.services.ai_action_confirmation import AIActionConfirmation
 

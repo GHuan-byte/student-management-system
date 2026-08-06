@@ -1,0 +1,117 @@
+/* AI guided action runner — visual overlay for AI-driven student operations.
+
+The overlay is only visible while an AIActionRunner is active. It sits above the
+student modal (z-index 100+) but never blocks interaction (pointer-events none
+on the mask) so the user can always cancel.
+*/
+
+.ai-guide-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(15, 26, 43, 0.3);
+  pointer-events: none;
+}
+
+.ai-guide-status {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 102;
+  max-width: min(720px, 90vw);
+  background: var(--surface, #ffffff);
+  color: var(--ink, #1c2a3a);
+  border: 1px solid var(--border, #d6e1ef);
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 14px;
+  box-shadow: var(--shadow, 0 8px 24px rgba(22, 47, 84, 0.18));
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ai-guide-cursor {
+  position: fixed;
+  z-index: 103;
+  width: 22px;
+  height: 22px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: rgba(25, 118, 243, 0.9);
+  box-shadow: 0 0 0 5px rgba(25, 118, 243, 0.22);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: left 0.18s ease, top 0.18s ease;
+}
+
+.ai-guide-confirm {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 102;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: min(720px, 92vw);
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border-strong, #bfd0e3);
+  border-radius: 14px;
+  padding: 12px 16px;
+  box-shadow: var(--shadow, 0 14px 32px rgba(22, 47, 84, 0.2));
+}
+
+.ai-guide-confirm-text {
+  font-size: 14px;
+  color: var(--ink, #1c2a3a);
+}
+
+.ai-guide-confirm button {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.ai-guide-confirm-ok {
+  background: var(--primary, #1976f3);
+  color: #ffffff;
+}
+
+.ai-guide-confirm-cancel {
+  background: transparent;
+  border-color: var(--border-strong, #bfd0e3);
+  color: var(--ink, #1c2a3a);
+}
+
+.ai-guide-field-highlight {
+  outline: 3px solid rgba(25, 118, 243, 0.6);
+  outline-offset: 2px;
+  border-radius: 4px;
+  background: var(--primary-soft, rgba(25, 118, 243, 0.08));
+}
+
+.ai-guide-click-pulse {
+  animation: ai-guide-pulse 420ms ease;
+}
+
+@keyframes ai-guide-pulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.ai-guide-row-highlight {
+  animation: ai-guide-row 2.4s ease;
+}
+
+@keyframes ai-guide-row {
+  0% { background: rgba(23, 163, 107, 0.35); }
+  100% { background: transparent; }
+}

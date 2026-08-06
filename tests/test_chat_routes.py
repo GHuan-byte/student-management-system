@@ -34,7 +34,7 @@ class FakeAIChatService:
         }
         self.confirm_error: Exception | None = None
 
-    async def chat(self, messages: list[dict[str, object]]) -> dict[str, object]:
+    async def chat(self, messages: list[dict[str, object]], *, user_id: object = None) -> dict[str, object]:
         self.calls.append(copy.deepcopy(messages))
         if self.error is not None:
             raise self.error

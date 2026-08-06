@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
   toggle.dataset.aiChatInitialized = "true";
 
   const HISTORY_KEY = "ai-chat-history";
+  const GUIDED_ACTION_KEY = "ai-guided-action";
   const MAX_HISTORY_MESSAGES = 100;
   const messages = [];
   let sending = false;
@@ -147,6 +148,22 @@ document.addEventListener("DOMContentLoaded", () => {
     saveHistory();
   }
 
+  function startGuidedAction(action) {
+    if (!action || action.action_type !== "create_student") return;
+    if (typeof action.action_id !== "string" || !action.action_id) return;
+    try {
+      sessionStorage.setItem(GUIDED_ACTION_KEY, JSON.stringify({
+        action_id: action.action_id,
+        action_type: action.action_type
+      }));
+    } catch (_error) { /* memory-only fallback */ }
+    if (window.location.pathname !== "/students") {
+      window.location.assign("/students");
+    } else {
+      document.dispatchEvent(new CustomEvent("ai-guided-action", { detail: { action } }));
+    }
+  }
+
   function clearSession() {
     messages.length = 0;
     messagesElement.textContent = "";
@@ -175,7 +192,11 @@ document.addEventListener("DOMContentLoaded", () => {
         renderMessage("assistant", data.reply);
         saveHistory();
       }
-      if (data.requires_confirmation) renderPendingAction(data);
+      if (data.action && data.action.action_type === "create_student") {
+        startGuidedAction(data.action);
+      } else if (data.requires_confirmation) {
+        renderPendingAction(data);
+      }
     } catch (_error) {
       showError(safeError);
       setOpen(true);
@@ -191,6 +212,13 @@ document.addEventListener("DOMContentLoaded", () => {
   input.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(); } });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) setOpen(false); });
   document.addEventListener("student-modal-opened", () => { if (!panel.hidden) setOpen(false); });
+  document.addEventListener("ai-guided-action-finished", (event) => {
+    const detail = event.detail || {};
+    const content = detail.ok ? "添加成功。" : `添加失败：${detail.message || "请重试"}`;
+    messages.push({ role: "assistant", content });
+    renderMessage("assistant", content);
+    saveHistory();
+  });
   restoreHistory();
   syncControls();
 });

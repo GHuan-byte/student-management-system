@@ -108,6 +108,13 @@ if (page) {
 
   void initialize();
 
+  function highlightStudentRow(studentId) {
+    const row = elements.tableBody.querySelector(`tr[data-student-id="${studentId}"]`);
+    if (!row) return;
+    row.classList.add("ai-guide-row-highlight");
+    window.setTimeout(() => row.classList.remove("ai-guide-row-highlight"), 2600);
+  }
+
   function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ?? "";
   }
@@ -217,6 +224,10 @@ if (page) {
 
   async function handleModalSubmit(event) {
     event.preventDefault();
+    if (document.body.dataset.aiGuidedAction === "true") {
+      setModalError("AI 引导操作中，请通过 AI 确认按钮完成提交。");
+      return;
+    }
     if (state.submitting) {
       return;
     }
@@ -423,6 +434,7 @@ if (page) {
 
     for (const student of state.students) {
       const row = document.createElement("tr");
+      row.dataset.studentId = student.id;
       const isSelected = state.selectedIds.has(student.id);
       row.innerHTML = `
         <td class="checkbox-col">
@@ -651,5 +663,16 @@ if (page) {
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
+  }
+
+  // Controlled page UI API for the AI action runner. The runner reuses the real
+  // modal/list functions instead of duplicating DOM manipulation.
+  if (!window.StudentPageUI) {
+    window.StudentPageUI = Object.freeze({
+      openCreateModal,
+      closeModal,
+      loadStudents,
+      highlightStudentRow
+    });
   }
 }

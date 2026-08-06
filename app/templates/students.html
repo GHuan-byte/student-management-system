@@ -16,8 +16,8 @@
     <form class="search-card" data-search-form>
       <label for="keyword">关键字搜索</label>
       <div class="search-row">
-        <input id="keyword" name="keyword" type="text" placeholder="学号、姓名、专业、电话或邮箱" />
-        <button type="submit">搜索</button>
+        <input id="keyword" name="keyword" type="text" placeholder="学号、姓名、专业、电话或邮箱" data-ai-target="student-search-input" />
+        <button type="submit" data-ai-target="student-search-button">搜索</button>
       </div>
     </form>
   </section>
@@ -25,7 +25,7 @@
   <section class="toolbar panel">
     <div class="toolbar-group">
       {% if current_user.role in ["staff", "admin"] %}
-      <button type="button" data-open-create-modal>新增学生</button>
+      <button type="button" data-open-create-modal data-ai-target="student-add-button">新增学生</button>
       {% endif %}
       {% if current_user.role == "admin" %}
       <button type="button" class="secondary disabled" data-batch-delete-button disabled>批量删除</button>
@@ -89,6 +89,7 @@
     <section
       class="modal-panel"
       data-student-modal
+      data-ai-target="student-form-modal"
       role="dialog"
       aria-modal="true"
       aria-labelledby="student-modal-title"
@@ -108,8 +109,8 @@
         <input type="hidden" name="id">
         {% include "_student_form_fields.html" %}
         <div class="form-actions">
-          <button type="button" class="secondary" data-cancel-modal>取消</button>
-          <button type="submit" data-submit-button>新增学生</button>
+          <button type="button" class="secondary" data-cancel-modal data-ai-target="student-cancel-button">取消</button>
+          <button type="submit" data-submit-button data-ai-target="student-submit-button">新增学生</button>
         </div>
       </form>
     </section>
@@ -119,4 +120,5 @@
 
 {% block scripts %}
 <script type="module" src="{{ url_for('static', filename='js/students.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/ai_action_runner.js') }}"></script>
 {% endblock %}

@@ -10,6 +10,12 @@ from werkzeug.exceptions import BadRequest
 
 from app.auth import can_confirm_action, role_can_execute_ai_tool
 from app.logging_config import log_security_event
+from app.services.ai_action import FAILED, SUCCEEDED
+from app.services.ai_action_store import (
+    AIActionExpiredError,
+    AIActionNotExecutableError,
+    AIActionNotFoundError,
+)
 from app.services.ai_errors import AIClientError
 from app.utils.response import api_error, api_success
 
@@ -107,6 +113,8 @@ def _public_chat_data(result: dict[str, object]) -> dict[str, object]:
     }
     if "confirmation_token" in result:
         data["confirmation_token"] = result["confirmation_token"]
+    if "action" in result:
+        data["action"] = result["action"]
     if "action_result" in result:
         data["action_result"] = result["action_result"]
     return data
@@ -223,7 +231,7 @@ def chat():
 
     service_factory = current_app.extensions["ai_chat_service_factory"]
     try:
-        result = _run_async(service_factory().chat(messages))
+        result = _run_async(service_factory().chat(messages, user_id=_current_user_id()))
     except AIClientError as error:
         return _map_ai_error(error)
     except Exception:
@@ -267,3 +275,147 @@ def confirm_chat_action():
             status_code=500,
         )
     return api_success(data=_public_confirm_data(result))
+
+
+def _current_user_id() -> Any:
+    """Return the authenticated user id or None."""
+    current_user = getattr(g, "current_user", None)
+    return current_user["id"] if isinstance(current_user, dict) else None
+
+
+def _guided_action_store():
+    """Return the in-process guided action store extension."""
+    return current_app.extensions.get("ai_action_store")
+
+
+def _not_found():
+    return api_error(
+        message="Not found",
+        error={"code": "not_found", "details": None},
+        status_code=404,
+    )
+
+
+def _result_error_code(result: dict[str, object]) -> str:
+    """Extract a stable error code from a failed confirm result."""
+    error = result.get("error")
+    if isinstance(error, dict) and isinstance(error.get("code"), str):
+        return error["code"]
+    action_result = result.get("action_result")
+    if isinstance(action_result, dict):
+        inner = action_result.get("error")
+        if isinstance(inner, dict) and isinstance(inner.get("code"), str):
+            return inner["code"]
+    return "mcp_tool_error"
+
+
+@chat_bp.get("/api/chat/actions/<uuid:action_id>")
+def get_guided_action(action_id: str):
+    """Return browser-safe display data for an owned guided action (no token)."""
+    action_id = str(action_id)
+    store = _guided_action_store()
+    current_user = getattr(g, "current_user", None)
+    if store is None or current_user is None:
+        return _not_found()
+    view = store.safe_view(action_id, current_user["id"])
+    if view is None:
+        # Do not reveal whether the action exists.
+        return _not_found()
+    response, status_code = api_success(data=view)
+    response.headers["Cache-Control"] = "no-store"
+    return response, status_code
+
+
+@chat_bp.post("/api/chat/actions/<uuid:action_id>/confirm")
+def confirm_guided_action(action_id: str):
+    """Confirm a guided write by action_id using the server-held token.
+
+    The browser never receives the confirmation token in the guided flow. The
+    server consumes its own stored token and reuses the existing confirmation
+    and MCP execution core (``AIChatService.confirm_action``).
+    """
+    action_id = str(action_id)
+    store = _guided_action_store()
+    current_user = getattr(g, "current_user", None)
+    if store is None or current_user is None:
+        return _not_found()
+    action = store.get_for_user(action_id, current_user["id"])
+    if action is None:
+        return _not_found()
+    if not role_can_execute_ai_tool(current_user["role"], action.get("tool_name")):
+        _log_ai_authorization_denied(
+            current_user=current_user,
+            tool_name=action.get("tool_name"),
+            reason="ai_guided_confirm_forbidden",
+        )
+        return api_error(
+            message="Forbidden",
+            error={"code": "forbidden", "details": None},
+            status_code=403,
+        )
+
+    try:
+        token = store.begin_execution(action_id)
+    except AIActionExpiredError:
+        return api_error(
+            message="确认请求已过期，请重新发起",
+            error={"code": "ai_action_expired", "details": None},
+            status_code=400,
+        )
+    except AIActionNotFoundError:
+        return _not_found()
+    except AIActionNotExecutableError:
+        return api_error(
+            message="该操作已执行或不可再次确认",
+            error={"code": "ai_action_not_executable", "details": None},
+            status_code=409,
+        )
+
+    service_factory = current_app.extensions["ai_chat_service_factory"]
+    try:
+        result = _run_async(service_factory().confirm_action(token))
+    except AIClientError as error:
+        store.mark_failed(action_id, error.code)
+        return _map_ai_error(error)
+    except Exception:
+        store.mark_failed(action_id, "internal_error")
+        return api_error(
+            message="Internal server error",
+            error={"code": "internal_error", "details": None},
+            status_code=500,
+        )
+
+    succeeded = result.get("success") is True
+    if succeeded:
+        store.mark_succeeded(action_id, _sanitize_action_result(result.get("action_result")))
+        status = SUCCEEDED
+    else:
+        store.mark_failed(action_id, _result_error_code(result))
+        status = FAILED
+    return api_success(data={
+        "action_id": action_id,
+        "status": status,
+        "reply": result.get("reply", ""),
+        "action_result": result.get("action_result"),
+    })
+
+
+@chat_bp.post("/api/chat/actions/<uuid:action_id>/cancel")
+def cancel_guided_action(action_id: str):
+    """Cancel a confirmable guided action owned by the current user."""
+    action_id = str(action_id)
+    store = _guided_action_store()
+    current_user = getattr(g, "current_user", None)
+    if store is None or current_user is None:
+        return _not_found()
+    try:
+        cancelled = store.cancel(action_id, current_user["id"])
+    except AIActionNotFoundError:
+        return _not_found()
+    except AIActionNotExecutableError:
+        return api_error(
+            message="该操作已执行，无法取消",
+            error={"code": "ai_action_not_cancellable", "details": None},
+            status_code=409,
+        )
+    return api_success(data={"action_id": action_id, "cancelled": cancelled})

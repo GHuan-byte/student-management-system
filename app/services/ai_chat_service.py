@@ -19,9 +19,17 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from typing import Any, Callable
 
+from app.services.ai_action import (
+    ACTION_TYPE_BY_TOOL,
+    CREATE_STUDENT,
+    PENDING,
+    filter_student_payload,
+    target_page_for,
+)
 from app.services.ai_action_confirmation import FORBIDDEN_TOKEN_KEYS
 from app.services.ai_errors import (
     AIConfirmationExecutionError,
@@ -115,22 +123,29 @@ class AIChatService:
         action_id_factory: Callable[[], str] | None = None,
         max_tool_rounds: int = 5,
         ai_configured: bool = True,
+        action_store: Any | None = None,
+        action_ttl_seconds: int = 120,
     ) -> None:
         self._deepseek_factory = deepseek_client_factory
         self._adapter_factory = mcp_adapter_factory
         self._action_confirmation = action_confirmation
-        self._action_id_factory = action_id_factory or (lambda: uuid.uuid4().hex)
+        self._action_id_factory = action_id_factory or (lambda: str(uuid.uuid4()))
         self._max_tool_rounds = max_tool_rounds
         self._ai_configured = ai_configured
+        self._action_store = action_store
+        self._action_ttl_seconds = max(1, int(action_ttl_seconds))
 
     async def chat(
         self,
         messages: list[dict[str, object]],
+        *,
+        user_id: Any = None,
     ) -> dict[str, object]:
         """Process a chat request through DeepSeek and optional MCP tools.
 
         Args:
             messages: Conversation history ending with a ``user`` message.
+            user_id: The authenticated user that owns any generated action.
 
         Returns:
             A dict with ``success`` and ``reply`` keys.
@@ -175,7 +190,7 @@ class AIChatService:
                     raise AIMultipleWriteActionsError()
 
                 if len(write_calls) == 1:
-                    return self._build_pending_action(write_calls[0])
+                    return self._build_pending_action(write_calls[0], user_id=user_id)
 
                 # --- No write tools — execute read/unknown and loop ---
                 assistant_msg = self._build_assistant_message(response)
@@ -346,11 +361,17 @@ class AIChatService:
     def _build_pending_action(
         self,
         tool_call: dict[str, Any],
+        *,
+        user_id: Any = None,
     ) -> dict[str, object]:
         """Build a Pending Action response for a single write tool.
 
         Creates a signed confirmation token and returns the pending-action
         structure without executing any MCP tool.
+
+        Phase 1: only ``create_student`` produces a guided ``action`` object and
+        an in-process store entry. Other write tools keep the legacy token-based
+        confirmation flow for later phases.
         """
         tool_name = tool_call["function"]["name"]
         arguments_raw = tool_call["function"]["arguments"]
@@ -393,7 +414,7 @@ class AIChatService:
             self._redact_safe_arguments(arguments), ensure_ascii=False,
         )
 
-        return {
+        result: dict[str, object] = {
             "success": True,
             "reply": f"需要确认后才能执行：{summary}",
             "requires_confirmation": True,
@@ -403,6 +424,42 @@ class AIChatService:
                 "safe_arguments": safe_arguments,
             },
         }
+
+        # Phase 1: only the create_student guided action is generated. The
+        # target_page is the fixed server mapping; the payload is filtered to
+        # approved semantic student fields only (no selectors / scripts / SQL).
+        action_type = ACTION_TYPE_BY_TOOL.get(tool_name)
+        if action_type == CREATE_STUDENT and self._action_store is not None:
+            created_at = time.time()
+            expires_at = created_at + self._action_ttl_seconds
+            safe_payload = filter_student_payload(arguments)
+            self._action_store.create(
+                action_id=action_id,
+                action_type=action_type,
+                tool_name=tool_name,
+                arguments=arguments,
+                payload=safe_payload,
+                token=confirmation_token,
+                user_id=user_id,
+                created_at=created_at,
+                expires_at=expires_at,
+                target=None,
+                requires_confirmation=True,
+            )
+            result["reply"] = "已准备添加学生，请确认。"
+            result["action"] = {
+                "action_id": action_id,
+                "action_type": action_type,
+                "status": PENDING,
+                "requires_confirmation": True,
+                "target_page": target_page_for(action_type),
+                "target": None,
+                "payload": safe_payload,
+                "created_at": created_at,
+                "expires_at": expires_at,
+            }
+
+        return result
 
     @staticmethod
     def _redact_safe_arguments(value: Any) -> Any:
