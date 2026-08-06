@@ -7,6 +7,7 @@ Student Management System V2 是对旧版学生管理系统的重写项目。项
 - Dashboard 与学生 CRUD
 - 搜索、分页、排序、当前页全选和批量删除
 - AI Chat 与危险操作的 Action Confirmation
+- AI Chat 引导添加学生动画（受控动作、确认前暂停、确认后单次写入与高亮）
 - MCP 学生工具
 - Viewer / Staff / Admin 登录与权限控制
 - CSRF 防护、安全事件日志与 `request_id`
@@ -22,6 +23,7 @@ Student Management System V2 是对旧版学生管理系统的重写项目。项
 - AI Chat 基础和 Action Confirmation
 - `configure-application-logging`
 - `add-login-access-control`（Viewer / Staff / Admin 登录、权限控制与 CSRF）
+- `add-ai-guided-student-actions`（AI 引导添加学生动画：受控动作、确认后单次写入与高亮）
 
 ## 项目结构
 
